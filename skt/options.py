@@ -28,7 +28,7 @@ from pathlib import Path
 from easydict import EasyDict
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
-from JJuk_E.utils.utils import get_obj_from_str, instantiate_from_config
+from skt.utils.utils import get_obj_from_str, instantiate_from_config
 
 
 def _load_yaml_recursive(cfg):
