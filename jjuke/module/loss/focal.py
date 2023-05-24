@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-from skt.module.loss.utils import _reduce
+from jjuke.module.loss.utils import _reduce
 
 __all__ = ["focal_loss", "FocalLoss"]
 

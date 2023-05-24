@@ -20,11 +20,11 @@ from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from skt import utils
-from skt.logger import CustomLogger
-from skt.utils.data import infinite_dataloader
-from skt.utils.ema import ema
-from skt.utils.optim import ESAM, SAM
+from jjuke import utils
+from jjuke.logger import CustomLogger
+from jjuke.utils.data import infinite_dataloader
+from jjuke.utils.ema import ema
+from jjuke.utils.optim import ESAM, SAM
 
 
 class BasePreprocessor(metaclass=ABCMeta):
