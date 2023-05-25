@@ -1,8 +1,8 @@
 from setuptools import find_packages, setup
 
 setup(
-    name="JJukE",
-    version="0.0.0.2",
+    name="jjuke",
+    version="0.0.0.4",
     description="utilities for AI models with Pytorch by JJukE",
     author="JJukE",
     author_email="psj9156@gmail.com",

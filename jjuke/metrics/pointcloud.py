@@ -1,4 +1,4 @@
-import torch as th
+import torch
 from pytorch3d.ops import knn_points
 from torch import Tensor
 
@@ -59,8 +59,8 @@ class PointDist:
         if not self._knn_done:
             self._calc_knn()
 
-        d1 = th.norm(self.a - self._knn1[:, :, 0], p=p, dim=-1)
-        d2 = th.norm(self.b - self._knn2[:, :, 0], p=p, dim=-1)
+        d1 = torch.norm(self.a - self._knn1[:, :, 0], p=p, dim=-1)
+        d2 = torch.norm(self.b - self._knn2[:, :, 0], p=p, dim=-1)
         d1 = self._reduce_result(d1, reduction=reduction)
         d2 = self._reduce_result(d2, reduction=reduction)
         return d1 + d2
