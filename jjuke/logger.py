@@ -7,12 +7,16 @@ __all__ = ["CustomLogger", "timenow", "basicConfig", "getLogger"]
 
 
 class CustomLogger:
-    def __init__(self, exp_dir="./exp", exp_name="test", filemode="a", use_color=True, lock=False):
+    def __init__(self, log_dir, filemode="a", isTrain=True, use_color=True, lock=False):
+        self.log_dir = log_dir
         self.lock = lock
-
-        log_dir = os.path.join(exp_dir, exp_name)
+        
         os.makedirs(log_dir, exist_ok = True)
-        filename = os.path.join(log_dir, "train_log.log")
+        
+        if isTrain:
+            filename = os.path.join(log_dir, "train_log.log")
+        else:
+            filename = os.path.join(log_dir, "test_log.log")
 
         if not lock:
             filename = Path(filename)
@@ -20,10 +24,8 @@ class CustomLogger:
                 timestr = self._get_timestr().replace(" ", "_").replace(":", "-")
                 filename = filename / f"log_{timestr}.log"
             self.file = open(filename, filemode)
-
             self.use_color = use_color
 
-        self.info("Output directory: {}".format(exp_dir))
         self.info("Log path: {}".format(filename))
 
     def _get_timestr(self):
