@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from functools import reduce
 from pathlib import Path
@@ -6,22 +7,24 @@ __all__ = ["CustomLogger", "timenow", "basicConfig", "getLogger"]
 
 
 class CustomLogger:
-    def __init__(self, filename=None, filemode="a", use_color=True, lock=False):
+    def __init__(self, exp_dir="./exp", exp_name="test", filemode="a", use_color=True, lock=False):
         self.lock = lock
-        self.empty = True
+
+        log_dir = os.path.join(exp_dir, exp_name)
+        os.makedirs(log_dir, exist_ok = True)
+        filename = os.path.join(log_dir, "train_log.log")
 
         if not lock:
-            if filename is not None:
-                self.empty = False
-                filename = Path(filename)
-                if filename.is_dir():
-                    timestr = self._get_timestr().replace(" ", "_").replace(":", "-")
-                    filename = filename / f"log_{timestr}.log"
-                self.file = open(filename, filemode)
-            else:
-                self.empty = True
+            filename = Path(filename)
+            if filename.is_dir():
+                timestr = self._get_timestr().replace(" ", "_").replace(":", "-")
+                filename = filename / f"log_{timestr}.log"
+            self.file = open(filename, filemode)
 
             self.use_color = use_color
+
+        self.info("Output directory: {}".format(exp_dir))
+        self.info("Log path: {}".format(filename))
 
     def _get_timestr(self):
         n = datetime.now()
@@ -52,8 +55,7 @@ class CustomLogger:
         else:
             print(out)
 
-        if not self.empty:
-            self.file.write(out + "\r\n")
+        self.file.write(out + "\r\n")
 
     def debug(self, *msg):
         msg = " ".join(map(str, msg))
@@ -76,7 +78,7 @@ class CustomLogger:
         self._write(msg, "FATAL")
 
     def flush(self):
-        if not self.lock and not self.empty:
+        if not self.lock:
             self.file.flush()
 
 
