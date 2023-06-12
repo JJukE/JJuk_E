@@ -1,4 +1,4 @@
-import torch as th
+import torch
 import torch.nn as nn
 import torch.nn.init as init
 from timm.models.layers import trunc_normal_

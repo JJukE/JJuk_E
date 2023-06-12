@@ -1,6 +1,6 @@
 from typing import Sequence
 
-import torch as th
+import torch
 
 
 def discrete_grid_sample(p, x):
@@ -17,7 +17,7 @@ def discrete_grid_sample(p, x):
 
 
 def random_sample(x, n, dim=-1):
-    idx = th.randperm(x.size(dim))[:n]
+    idx = torch.randperm(x.size(dim))[:n]
     if dim < 0:
         dim = x.dim() + dim
     u = [slice(None) for _ in range(dim)] + [idx]
@@ -26,12 +26,12 @@ def random_sample(x, n, dim=-1):
 
 def batched_randperm(shape, dim=-1, device="cpu"):
     """adapted from https://discuss.pyth.org/t/batch-version-of-torch-randperm/111121/2"""
-    idx = th.argsort(th.rand(shape, device=device), dim=dim)
+    idx = torch.argsort(torch.rand(shape, device=device), dim=dim)
     return idx
 
 
-def unsqueeze_as(x, y) -> th.Tensor:
-    if isinstance(y, th.Tensor):
+def unsqueeze_as(x, y) -> torch.Tensor:
+    if isinstance(y, torch.Tensor):
         d = y.dim()
     else:
         d = len(y)

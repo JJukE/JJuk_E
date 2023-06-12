@@ -1,4 +1,4 @@
-import torch as th
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
@@ -18,7 +18,7 @@ def focal_loss(gamma: float, logits: Tensor, targets: Tensor, reduction="mean") 
     FL(p) = -(1 - p)^\gamma \log(p)
     """
     ce = F.cross_entropy(logits, targets, reduction="none")  # b ...
-    scale = th.pow(1 - th.exp(-ce), gamma)
+    scale = torch.pow(1 - torch.exp(-ce), gamma)
     loss = scale * ce
     return _reduce(loss, reduction)
 

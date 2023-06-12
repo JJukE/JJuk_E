@@ -1,7 +1,7 @@
 from math import inf
 from typing import Sequence, Union
 
-import torch as th
+import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
 
@@ -24,7 +24,7 @@ def build_dataloaders(
     **kwargs,
 ) -> Union[DataLoader, Sequence[DataLoader]]:
     if pin_memory is None:
-        pin_memory = th.cuda.is_available()
+        pin_memory = torch.cuda.is_available()
     if persistent_workers is None:
         persistent_workers = num_workers > 0
     dl_kwargs = dict(

@@ -3,11 +3,11 @@ from datetime import datetime
 from functools import reduce
 from pathlib import Path
 
-__all__ = ["CustomLogger", "timenow", "basicConfig", "getLogger"]
+__all__ = ["CustomLogger", "timenow"]
 
 
 class CustomLogger:
-    def __init__(self, log_dir, filemode="a", isTrain=True, use_color=True, lock=False):
+    def __init__(self, log_dir="./exps", filemode="a", isTrain=True, use_color=True, lock=False):
         self.log_dir = log_dir
         self.lock = lock
         
@@ -90,14 +90,3 @@ def timenow(braket=False):
         return f"[{n.year}-{n.month:02d}-{n.day:02d} {n.hour:02d}:{n.minute:02d}:{n.second:02d}]"
     else:
         return f"{n.year}-{n.month:02d}-{n.day:02d} {n.hour:02d}:{n.minute:02d}:{n.second:02d}"
-
-
-_logger = CustomLogger()
-
-
-def basicConfig(filename, lock=False):
-    _logger.__init__(filename, lock=lock)
-
-
-def getLogger():
-    return _logger
