@@ -5,7 +5,7 @@ import torch
 from torch import Tensor, Size
 
 from modules import default
-from modules.diffusion.common import get_betas
+from modules.diffusion import get_betas
 from modules.diffusion.diffusion_base import DiffusionBase
 
 class DDIMSampler(DiffusionBase):

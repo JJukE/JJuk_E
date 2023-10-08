@@ -7,7 +7,7 @@ from scipy.interpolate import interp1d
 from einops import rearrange
 
 from modules import default
-from modules.diffusion.common import get_betas
+from modules.diffusion import get_betas
 from modules.diffusion.diffusion_base import DiffusionBase
 
 
