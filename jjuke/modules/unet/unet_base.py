@@ -9,9 +9,9 @@ from torch import nn
 from einops import rearrange
 
 from jjuke.modules  import default, cast_tuple
-from unet.base_modules import conv_nd, RandomOrLearnedSinusoidalPosEmb, SinusoidalPosEmb, \
+from jjuke.modules.unet.base_modules import conv_nd, RandomOrLearnedSinusoidalPosEmb, SinusoidalPosEmb, \
     Residual, PreNorm, Downsample, Upsample
-from unet.unet_modules import attention_nd, linear_attention_nd, ResnetBlock
+from jjuke.modules.unet.unet_modules import attention_nd, linear_attention_nd, ResnetBlock
 
 
 class UnetBase(nn.Module):
@@ -21,7 +21,6 @@ class UnetBase(nn.Module):
             unet_dim: int,
             dim,
             init_dim = None,
-            init_conv_kernel_size = 7,
             out_dim = None,
             dim_mults = (1, 2, 4, 8),
             channels = 3,
@@ -56,7 +55,7 @@ class UnetBase(nn.Module):
         input_channels = channels * (2 if self_condition else 1)
 
         init_dim = default(init_dim, dim)
-        self.init_conv = conv_nd(unet_dim, input_channels, init_dim, init_conv_kernel_size, padding=3)
+        self.init_conv = conv_nd(unet_dim, input_channels, init_dim, 7, padding=3)
 
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))

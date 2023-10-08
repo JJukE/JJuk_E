@@ -122,9 +122,13 @@ class RMSNorm(nn.Module):
 
 
 class LayerNorm(nn.Module):
-    def __init__(self, unet_dim: int, dim):
+    def __init__(self, unet_dim: int, dim, eps=1e-5, fp16_eps=1e-3, stable=False):
         super().__init__()
         
+        self.eps = eps
+        self.fp16_eps = fp16_eps
+        self.stable = stable
+
         if unet_dim == 1:
             self.g = nn.Parameter(torch.ones(1, dim, 1))
         elif unet_dim == 2:
@@ -133,7 +137,11 @@ class LayerNorm(nn.Module):
             raise NotImplementedError
     
     def forward(self, x):
-        eps = 1e-5 if x.dtype == torch.float32 else 1e-3
+        eps = self.eps if x.dtype == torch.float32 else self.fp16_eps
+
+        if self.stable: # ChanLayerNorm from https://github.com/lucidrains/DALLE2-pytorch/blob/main/dalle2_pytorch/dalle2_pytorch.py
+            x = x / x.amax(dim=1, keepdim=True).detach()
+        
         var = torch.var(x, dim=1, unbiased=False, keepdim=True)
         mean = torch.mean(x, dim=1, keepdim=True)
         return (x - mean) * (var + eps).rsqrt() * self.g

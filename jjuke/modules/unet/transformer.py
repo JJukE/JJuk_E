@@ -62,13 +62,13 @@ class BasicTransformerBlock(nn.Module):
             d_emb (int): input embedding size
             n_head (int): number of attention head
             d_head (int): size of attention head
-            d_cond (int): size of the conditional embeddings
+            d_cond (int): size of the conditional embeddings. 0 means no conditioning.
         """
         super().__init__()
         
         self.self_attn = CrossAttention(d_emb, d_emb, n_head, d_head) # self-attention
         self.norm1 = nn.LayerNorm(d_emb)
-        
+
         self.cross_attn = CrossAttention(d_emb, d_cond, n_head, d_head) # cross-attention
         self.norm2 = nn.LayerNorm(d_emb)
         
@@ -116,8 +116,8 @@ class CrossAttention(nn.Module):
         # query, key and value mapping
         d_attn = d_head * n_head
         self.to_q = nn.Linear(d_emb, d_attn, bias=False)
-        self.to_k = nn.Linear(d_cond, d_attn, bias=False)
-        self.to_v = nn.Linear(d_cond, d_attn, bias=False)
+        self.to_k = nn.Linear(d_cond if d_cond != 0 else d_emb, d_attn, bias=False)
+        self.to_v = nn.Linear(d_cond if d_cond != 0 else d_emb, d_attn, bias=False)
 
         # final linear layer
         self.to_out = nn.Sequential(nn.Linear(d_attn, d_emb))
@@ -177,12 +177,12 @@ class CrossAttention(nn.Module):
             v (torch.Tensor): Value vectors before splitting heads of shape (batch_size, seq_value, d_attn).
         """
         # split
-        q = rearrange(q, "b s (n d) -> b s n d", n=self.n_head, d=self.d_head) # (batch_size, seq_len of query, n_head, d_head)
-        k = rearrange(k, "b s (n d) -> b s n d", n=self.n_head, d=self.d_head) # (batch_size, seq_len of key, n_head, d_head)
+        q = rearrange(q, "b s (n d) -> b s n d", n=self.n_head, d=self.d_head) # (batch_size(b), seq_len of query, n_head(h), d_head(d))
+        k = rearrange(k, "b s (n d) -> b s n d", n=self.n_head, d=self.d_head) # (batch_size(b), seq_len of key, n_head(h), d_head(d))
         v = rearrange(v, "b s (n d) -> b s n d", n=self.n_head, d=self.d_head)
         
         # compute attention
-        attn = torch.einsum("bhij,bjhd->bihd", q, k) # batch(K^T): (b d h j) -> batch matrix multiplication
+        attn = torch.einsum("b i h d, b j h d -> b h i j", q, k) # batch(K^T): (b d h j) -> batch matrix multiplication
         
         # compute softmax
         if self.is_inplace:

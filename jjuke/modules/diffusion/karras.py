@@ -6,9 +6,9 @@ from torch import Tensor, Size
 from scipy.interpolate import interp1d
 from einops import rearrange
 
-from modules import default
-from modules.diffusion import get_betas
-from modules.diffusion.diffusion_base import DiffusionBase
+from jjuke.modules import default
+from jjuke.modules.diffusion import get_betas
+from jjuke.modules.diffusion.diffusion_base import DiffusionBase
 
 
 class KarrasSampler(DiffusionBase):

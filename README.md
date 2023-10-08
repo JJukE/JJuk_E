@@ -53,3 +53,4 @@ My version of [kitsu](https://github.com/Kitsunetic/kitsu), thanks to J.H. Shim 
 - [ ] Test 1D U-Net
 - [ ] Implement 3D U-Net
 - [ ] Organize metrics, pointcloud, utils
+- [ ] Trouble shooting of LDM U-Net (OOM)

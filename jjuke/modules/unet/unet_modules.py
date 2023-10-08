@@ -6,22 +6,18 @@ import torch
 from torch import nn
 from einops import rearrange, reduce
 
-from unet.base_modules import conv_nd, weight_standardized_conv_nd, \
+from jjuke.modules.unet.base_modules import conv_nd, weight_standardized_conv_nd, \
     RMSNorm, LayerNorm
 
 
 class Block(nn.Module):
-    def __init__(self, unet_dim: int, dim, dim_out, groups = 8):
+    def __init__(self, unet_dim: int, dim, dim_out, groups = 8, weight_standardization = False):
         super().__init__()
-
-        if unet_dim == 1:
-            kernel_size = 1
-        elif unet_dim == 2:
-            kernel_size = 3
-        else:
-            raise NotImplementedError
         
-        self.proj = weight_standardized_conv_nd(unet_dim, dim, dim_out, kernel_size, padding=1)
+        if not weight_standardization:
+            self.proj = conv_nd(unet_dim, dim, dim_out, 3, padding=1)
+        else:
+            self.proj = weight_standardized_conv_nd(unet_dim, dim, dim_out, 3, padding=1)
         self.norm = nn.GroupNorm(groups, dim_out)
         self.act = nn.SiLU()
 
@@ -38,7 +34,7 @@ class Block(nn.Module):
 
 
 class ResnetBlock(nn.Module):
-    def __init__(self, dim, dim_out, *args, unet_dim=None, time_emb_dim=None, groups=8):
+    def __init__(self, dim, dim_out, *args, unet_dim=None, time_emb_dim=None, groups=8, weight_standardization=False):
         super().__init__()
 
         self.unet_dim = unet_dim
@@ -47,8 +43,8 @@ class ResnetBlock(nn.Module):
             nn.SiLU(),
             nn.Linear(time_emb_dim, dim_out * 2)
         ) if time_emb_dim is not None else None
-        self.block1 = Block(unet_dim, dim, dim_out, groups=groups)
-        self.block2 = Block(unet_dim, dim_out, dim_out, groups=groups)
+        self.block1 = Block(unet_dim, dim, dim_out, groups=groups, weight_standardization=weight_standardization)
+        self.block2 = Block(unet_dim, dim_out, dim_out, groups=groups, weight_standardization=weight_standardization)
         self.res_conv = conv_nd(unet_dim, dim, dim_out, 1) if dim != dim_out else nn.Identity()
 
     def forward(self, x, time_emb=None):
@@ -65,6 +61,7 @@ class ResnetBlock(nn.Module):
         h = self.block1(x, scale_shift=scale_shift)
         h = self.block2(h)
         return h + self.res_conv(x)
+
 
 class LinearAttention1D(nn.Module):
     def __init__(self, dim, heads = 4, dim_head = 32):

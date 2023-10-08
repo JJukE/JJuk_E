@@ -10,7 +10,7 @@ from einops import rearrange
 from unet.transformer import SpatialTransformer
 
 
-class LDMUNet(nn.Module):
+class UNetModel(nn.Module):
     """ U-Net for Latent Diffusion"""
     def __init__(
             self, *,
@@ -59,7 +59,7 @@ class LDMUNet(nn.Module):
         for i in range(levels):
             # add residual blocks and attentions
             for _ in range(n_res_blocks):
-                # Residual block: num of channels in prev level  -> num of channels in current level 
+                # Residual block: num of channels in prev level -> num of channels in current level 
                 layers = [ResBlock(channels, d_time_emb, out_channels=channels_list[i])]
                 channels = channels_list[i]
                 
@@ -126,7 +126,7 @@ class LDMUNet(nn.Module):
         time_emb = torch.cat([torch.cos(args), torch.sin(args)], dim=-1) # cosine and sine
         return time_emb
     
-    def forward(self, x: torch.Tensor, time_steps: torch.Tensor, cond: torch.Tensor):
+    def forward(self, x: torch.Tensor, time_steps: torch.Tensor, cond: torch.Tensor = None):
         """ Forward function
 
         Args:
@@ -283,8 +283,7 @@ def _test_time_embeddings(): # TODO: check how this function works
 
     plt.figure(figsize=(15, 5))
     m = UNetModel(in_channels=1, out_channels=1, channels=320, n_res_blocks=1, attention_levels=[],
-                  channel_multipliers=[],
-                  n_heads=1, tf_layers=1, d_cond=1)
+                  channel_multipliers=[], n_heads=1, tf_layers=1, d_cond=1)
     te = m.time_step_embedding(torch.arange(0, 1000))
     plt.plot(np.arange(1000), te[:, [50, 100, 190, 260]].numpy())
     plt.legend(["dim %d" % p for p in [50, 100, 190, 260]])
