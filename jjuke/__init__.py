@@ -3,4 +3,4 @@ from jjuke.utils import logger, sched
 
 # from jjuke import *
 
-__version__ = '0.0.3.1'
+__version__ = '0.0.3.2'

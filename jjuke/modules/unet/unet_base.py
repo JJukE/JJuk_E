@@ -8,10 +8,11 @@ import torch
 from torch import nn
 from einops import rearrange
 
-from jjuke.modules  import default, cast_tuple
-from jjuke.modules.unet.base_modules import conv_nd, RandomOrLearnedSinusoidalPosEmb, SinusoidalPosEmb, \
-    Residual, PreNorm, Downsample, Upsample
-from jjuke.modules.unet.unet_modules import attention_nd, linear_attention_nd, ResnetBlock
+from modules  import default, cast_tuple
+from modules.unet.base_modules import conv_nd, RandomOrLearnedSinusoidalPosEmb, SinusoidalPosEmb, \
+    Residual, PreNorm
+from modules.unet.unet_modules import attention_nd, linear_attention_nd, ResnetBlock, \
+    Downsample, Upsample
 
 
 class UnetBase(nn.Module):
@@ -25,7 +26,7 @@ class UnetBase(nn.Module):
             dim_mults = (1, 2, 4, 8),
             channels = 3,
             self_condition = False,
-            resnet_block_groups = 8,
+            resnet_groups = 8,
             learned_variance = False,
             learned_sinusoidal_cond = False,
             random_fourier_features = False,
@@ -60,7 +61,7 @@ class UnetBase(nn.Module):
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
 
-        block_class = partial(ResnetBlock, unet_dim=self.unet_dim, groups=resnet_block_groups)
+        block_class = partial(ResnetBlock, unet_dim=self.unet_dim, groups=resnet_groups)
 
         # time embeddings
         time_dim = dim * 4
@@ -104,17 +105,17 @@ class UnetBase(nn.Module):
             attn_class = FullAttention if layer_full_attn else linear_attention_nd(unet_dim=self.unet_dim)
 
             self.downs.append(nn.ModuleList([
-                block_class(dim_in, dim_in, time_emb_dim=time_dim),
-                block_class(dim_in, dim_in, time_emb_dim=time_dim),
+                block_class(dim_in, dim_in, time_cond_dim=time_dim),
+                block_class(dim_in, dim_in, time_cond_dim=time_dim),
                 attn_class(dim_in, heads=layer_attn_heads, dim_head=layer_attn_dim_head),
-                Downsample(self.unet_dim, dim_in, dim_out) if not is_last else conv_nd(self.unet_dim, dim_in, dim_out, 3, padding=1)
+                Downsample(dim_in, dim_out=dim_out, unet_dim=self.unet_dim) if not is_last else conv_nd(self.unet_dim, dim_in, dim_out, 3, padding=1)
             ]))
 
         # middle part
         mid_dim = dims[-1]
-        self.mid_block1 = block_class(mid_dim, mid_dim, time_emb_dim=time_dim)
+        self.mid_block1 = block_class(mid_dim, mid_dim, time_cond_dim=time_dim)
         self.mid_attn = FullAttention(mid_dim, heads=attn_heads, dim_head=attn_dim_head)
-        self.mid_block2 = block_class(mid_dim, mid_dim, time_emb_dim=time_dim)
+        self.mid_block2 = block_class(mid_dim, mid_dim, time_cond_dim=time_dim)
 
         # up sampling part
         for ind, ((dim_in, dim_out), layer_full_attn, layer_attn_heads, layer_attn_dim_head) in enumerate(
@@ -125,17 +126,17 @@ class UnetBase(nn.Module):
             attn_class = FullAttention if layer_full_attn else linear_attention_nd(unet_dim=self.unet_dim)
 
             self.ups.append(nn.ModuleList([
-                block_class(dim_out+dim_in, dim_out, time_emb_dim=time_dim),
-                block_class(dim_out+dim_in, dim_out, time_emb_dim=time_dim),
+                block_class(dim_out+dim_in, dim_out, time_cond_dim=time_dim),
+                block_class(dim_out+dim_in, dim_out, time_cond_dim=time_dim),
                 attn_class(dim_out, heads=layer_attn_heads, dim_head=layer_attn_dim_head),
-                Upsample(self.unet_dim, dim_out, dim_in) if not is_last else conv_nd(self.unet_dim, dim_out, dim_in, 3, padding=1)
+                Upsample(dim_out, dim_out=dim_in, unet_dim=self.unet_dim) if not is_last else conv_nd(self.unet_dim, dim_out, dim_in, 3, padding=1)
             ]))
 
         # final normalization part
         default_out_dim = channels * (1 if not learned_variance else 2)
         self.out_dim = default(out_dim, default_out_dim)
 
-        self.final_res_block = block_class(dim*2, dim, time_emb_dim=time_dim)
+        self.final_res_block = block_class(dim*2, dim, time_cond_dim=time_dim)
         self.final_conv = conv_nd(unet_dim, dim, self.out_dim, 1)
     
     @property

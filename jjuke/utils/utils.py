@@ -6,6 +6,7 @@ from copy import deepcopy
 
 import numpy as np
 import torch
+from torch import nn
 from easydict import EasyDict
 from torch import Tensor
 from torchvision.utils import make_grid

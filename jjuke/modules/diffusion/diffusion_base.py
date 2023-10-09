@@ -121,8 +121,7 @@ class DiffusionBase(PostInitModule):
 
         assert x_shape[0] == t.shape[0]
         out = torch.gather(coeff, 0, t)
-        pattern = "b -> b " + " ".join(["()"] * (len(x_shape) - 1))
-        return rearrange(out, pattern)
+        return rearrange(out, "b -> b " + " ".join(["1"] * (len(x_shape) - 1)))
     
     @staticmethod
     def unsqueeze_as(x: Tensor, y: Tensor):

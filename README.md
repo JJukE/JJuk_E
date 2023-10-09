@@ -42,6 +42,7 @@ My version of [kitsu](https://github.com/Kitsunetic/kitsu), thanks to J.H. Shim 
     |-- io.py
     |-- logger.py # Customized logger
     |-- optim.py
+    |-- resize_right.py # from https://github.com/assafshocher/ResizeRight
     |-- sched.py # Useful learning rate schedulers
     |-- utils.py
     `-- vis3d.py # Visualization of 3D Scenes
@@ -51,6 +52,7 @@ My version of [kitsu](https://github.com/Kitsunetic/kitsu), thanks to J.H. Shim 
 # To-do List
 
 - [ ] Test 1D U-Net
+- [ ] Implement Conditional U-Net (need to study classifier free guidance)
+- [ ] Trouble shooting of LDM U-Net (OOM)
 - [ ] Implement 3D U-Net
 - [ ] Organize metrics, pointcloud, utils
-- [ ] Trouble shooting of LDM U-Net (OOM)

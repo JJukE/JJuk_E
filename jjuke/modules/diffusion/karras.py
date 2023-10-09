@@ -97,7 +97,7 @@ class KarrasSampler(DiffusionBase):
         dims_to_append = x.ndim - sigma.ndim
         if dims_to_append < 0:
             raise ValueError("Input has {} dims, but target dimension is {}, which is less".format(sigma.ndim, x.ndim))
-        appended = rearrange(sigma, "... -> ..." + " ".join(["()"] * dims_to_append)) # append dimensions to the end of the sigma as x dimensions
+        appended = rearrange(sigma, "... -> ... " + " ".join(["1"] * dims_to_append)) # append dimensions to the end of the sigma as x dimensions
         return (x - denoised) / appended
     
     @staticmethod

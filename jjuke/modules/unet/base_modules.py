@@ -8,9 +8,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from einops import rearrange, reduce
-from einops.layers.torch import Rearrange
-
-from jjuke.modules import default
 
 
 def conv_nd(unet_dim, *args, **kwargs):
@@ -89,21 +86,6 @@ class Residual(nn.Module):
     
     def forward(self, x, *args, **kwargs):
         return self.fn(x, *args, **kwargs) + x
-
-
-def Downsample(unet_dim: int, dim, dim_out=None):
-    # TODO: check when 1D -> return conv_nd(unet_dim, default(dim_out, dim), 4, 2, 1) in lucidrain ddpm
-    return nn.Sequential(
-        Rearrange("B C (H P1) (W P2) -> B (C P1 P2) H W", P1=2, P2=2),
-        conv_nd(unet_dim, dim*4, default(dim_out, dim), 1)
-    )
-
-
-def Upsample(unet_dim: int, dim, dim_out = None):
-    return nn.Sequential(
-        nn.Upsample(scale_factor=2, mode="nearest"),
-        conv_nd(unet_dim, dim, default(dim_out, dim), 3, padding=1)
-    )
 
 
 class RMSNorm(nn.Module):
