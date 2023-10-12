@@ -206,8 +206,8 @@ def seed_everything(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     if torch.cuda.is_available():
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cudnn.deterministic = False
+        torch.backends.cudnn.benchmark = False # automatically find the fast function. Default: False
+        torch.backends.cudnn.deterministic = True # Default: False
 
 
 def find_free_port():

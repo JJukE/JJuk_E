@@ -4,9 +4,9 @@ import numpy as np
 import torch
 from torch import Tensor, Size
 
-from jjuke.modules import default
-from jjuke.modules.diffusion import get_betas
-from jjuke.modules.diffusion.diffusion_base import DiffusionBase
+from modules import default
+from modules.diffusion import get_betas
+from modules.diffusion.diffusion_base import DiffusionBase
 
 class DDIMSampler(DiffusionBase):
     def __init__(
@@ -139,16 +139,17 @@ class DDIMSampler(DiffusionBase):
         # variables for sampling intermedians like in DDPM
         sample_indices = np.linspace(0, len(self.ddim_timesteps), num_samples, dtype=np.int64).tolist()
         sample_list = []
-
-        if num_samples > 1:
-            for i, sample in enumerate(self.sample_progressive(
-                denoise_fn, shape, noise, condition, condition_cross)):
-                if i in sample_indices:
-                    sample_list.append(sample)
+        do_sampling = num_samples > 1
+        for i, sample in enumerate(self.sample_progressive(
+            denoise_fn, shape, noise, condition, condition_cross)):
+            if do_sampling and i in sample_indices:
+                sample_list.append(sample)
+        
+        if not do_sampling:
+            return sample
+        else:
             sample_list.append(sample)
             return torch.stack(sample_list)
-        else:
-            return next(self.sample_progressive(denoise_fn, shape, noise, condition, condition_cross))
 
 
 def __test__():

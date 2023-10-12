@@ -6,9 +6,8 @@ from torch import Tensor, Size
 from scipy.interpolate import interp1d
 from einops import rearrange
 
-from jjuke.modules import default
-from jjuke.modules.diffusion import get_betas
-from jjuke.modules.diffusion.diffusion_base import DiffusionBase
+from modules.diffusion import get_betas
+from modules.diffusion.diffusion_base import DiffusionBase
 
 
 class KarrasSampler(DiffusionBase):
@@ -21,9 +20,9 @@ class KarrasSampler(DiffusionBase):
             sigma_max: int = 80, # higher for high resolutions?
             rho: float = 7.,
             s_churn: float = 0.,
-            s_tmin:float = 0.,
+            s_tmin: float = 0.,
             s_tmax: float = float("inf"),
-            s_noise:float = 1.,
+            s_noise: float = 1.,
             model_mean_type: str = "eps",
             model_var_type: str = "fixed_small",
             clip_denoised: bool = True
@@ -51,8 +50,8 @@ class KarrasSampler(DiffusionBase):
         self.s_tmin = s_tmin
         self.s_tmax = s_tmax
         self.s_noise = s_noise
-        
-        # Noise schedule for Karras sampler
+
+        # Get sigmas for noise schedule for Karras sampler
         ramp = np.linspace(0, 1, self.karras_num_timesteps)
         max_inv_rho = self.sigma_max ** (1 / self.rho)
         min_inv_rho = self.sigma_min ** (1 / self.rho)
@@ -128,7 +127,7 @@ class KarrasSampler(DiffusionBase):
                 x = x + eps * (sigma_hat ** 2 - self.sigmas[i] ** 2) ** 0.5
             
             t = torch.full((batch_size,), self.karras_t_sigmas_hat[i], device=self.device, dtype=torch.long)
-            c_in = self.unsqueeze_as(1. / (sigma_hat ** 2 + 1), x)
+            c_in = self.unsqueeze_as(1. / (sigma_hat ** 2 + 1) ** 0.5, x)
             denoised = self.p_mean_variance(denoise_fn, x * c_in, t)["pred_x_start"]
             d = self.to_d(x, sigma_hat, denoised)
             yield x, denoised
@@ -141,7 +140,7 @@ class KarrasSampler(DiffusionBase):
                 # Heun's method
                 x_2 = x + d * dt
                 t_2 = torch.full((batch_size,), self.karras_t_sigmas[i+1], device=self.device, dtype=torch.long)
-                c_in_2 = self.unsqueeze_as(1.0 / (self.sigmas[i+1] ** 2 + 1) ** 0.5, x_2)
+                c_in_2 = self.unsqueeze_as(1. / (self.sigmas[i+1] ** 2 + 1) ** 0.5, x_2)
                 denoised_2 = self.p_mean_variance(denoise_fn, x_2 * c_in_2, t_2)["pred_x_start"]
                 d_2 = self.to_d(x_2, self.sigmas[i+1], denoised_2)
                 d_prime = (d + d_2) / 2
@@ -212,7 +211,7 @@ class KarrasSampler(DiffusionBase):
             x = x + torch.randn_like(x) * sigma_up
         yield x, x # "x": x, "pred_x_start": x
     
-    def forward(self, denoise_fn: Callable[[Tensor, Tensor], Tensor], shape: Size, num_samples=1):
+    def forward(self, denoise_fn: Callable[[Tensor, Tensor], Tensor], shape: Size, num_samples: int = 1):
         sampler_fn = {
             "heun": self.sample_heun,
             "dpm": self.sample_dpm, 
@@ -222,15 +221,16 @@ class KarrasSampler(DiffusionBase):
         # variables for sampling intermediations too
         sample_indices = np.linspace(0, self.karras_num_timesteps, num_samples, dtype=np.int64).tolist()
         sample_list = []
-
-        if num_samples > 1:
-            for i, (x_t, pred_x_start) in enumerate(sampler_fn(denoise_fn, shape)):
-                if i in sample_indices:
-                    sample_list.append(x_t)
+        do_sampling = num_samples > 1
+        for i, (x_t, pred_x_start) in enumerate(sampler_fn(denoise_fn, shape)):
+            if do_sampling and i in sample_indices:
+                sample_list.append(x_t)
+        
+        if not do_sampling:
+            return pred_x_start
+        else:
             sample_list.append(pred_x_start)
             return torch.stack(sample_list)
-        else:
-            return next(sampler_fn(denoise_fn, shape))[1] # pred_x_start
 
 
 def __test__():

@@ -5,11 +5,11 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import Tensor, Size
-from einops import rearrange
+from einops import rearrange, reduce
 
-from jjuke.modules import default
-from jjuke.modules.diffusion import normal_kl, discretized_gaussian_log_likelihood
-from jjuke.modules.diffusion.diffusion_base import DiffusionBase
+from modules import default
+from modules.diffusion import normal_kl, discretized_gaussian_log_likelihood
+from modules.diffusion.diffusion_base import DiffusionBase
 
 
 class DDPMTrainer(DiffusionBase):
@@ -47,7 +47,7 @@ class DDPMTrainer(DiffusionBase):
     def loss_fn(self, pred: Tensor, target: Tensor) -> Tensor:
         loss = {
             "l2": partial(F.mse_loss, reduction="none"),
-            "rescaled_ls": partial(F.mse_loss, reduction="none"),
+            "rescaled_l2": partial(F.mse_loss, reduction="none"),
             "l1": partial(F.l1_loss, reduction="none"),
             "rescaled_l1": partial(F.l1_loss, reduction="none")
         }[self.loss_type](pred, target)
@@ -61,10 +61,11 @@ class DDPMTrainer(DiffusionBase):
         out = self.p_mean_variance(denoise_fn, x_t, t)
         model_mean, model_log_var = out["model_mean"], out["model_log_var"]
         kl = normal_kl(true_mean, true_log_var, model_mean, model_log_var)
-        kl = rearrange(kl, "dim_0 ... -> dim_0 (...)").mean(dim=1)
-
+        kl = reduce(kl, "B ... -> B", "mean")
+        
+        model_log_var = model_log_var.expand(x_start.shape)
         decoder_nll = -discretized_gaussian_log_likelihood(x_start, model_mean, 0.5 * model_log_var)
-        decoder_nll = rearrange(decoder_nll, "dim_0 ... -> dim_0 (...)").mean(dim=1)
+        decoder_nll = reduce(kl, "B ... -> B", "mean")
 
         out["vlb"] = torch.where(t == 0, decoder_nll, kl)
         return out
@@ -79,7 +80,7 @@ class DDPMTrainer(DiffusionBase):
 
         losses = {}
         info = {"t": t, "eps": noise, "x_t": x_t, "x_start": x_start}
-        
+
         if self.loss_type in ("kl", "rescaled_kl"):
             # \mathcal{L}_\text{kl}
             info.update(self.get_vlb(denoise_fn=denoise_fn, x_start=x_start, x_t=x_t, t=t))
@@ -171,14 +172,14 @@ class DDPMSampler(DiffusionBase):
         # variables for filtering intermediations
         sample_indices = np.linspace(0, self.num_timesteps, num_samples, dtype=np.int64).tolist()
         sample_list = []
-
-        if num_samples > 1:
-            for i, sample in enumerate(self.sample_progressive(
-                denoise_fn, shape, sample, condition, condition_cross)):
-                if i in sample_indices:
-                    sample_list.append(sample)
+        do_sampling = num_samples > 1
+        for i, sample in enumerate(self.sample_progressive(
+            denoise_fn, shape, sample, condition, condition_cross)):
+            if do_sampling and i in sample_indices:
+                sample_list.append(sample)
+        
+        if not do_sampling:
+            return sample
+        else:
             sample_list.append(sample)
             return torch.stack(sample_list)
-        else:
-            return next(self.sample_progressive(denoise_fn, shape, sample, condition, condition_cross))
-        

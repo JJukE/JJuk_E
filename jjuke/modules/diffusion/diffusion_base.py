@@ -8,6 +8,8 @@ from torch import Tensor
 from torch import nn
 from einops import rearrange
 
+from modules import default
+
 
 class PostInitModule(nn.Module):
     def __init_subclass__(cls, **kwargs):
@@ -93,6 +95,7 @@ class DiffusionBase(PostInitModule):
             delattr(self, k)
             self.register_buffer(k, v)
     
+
     @contextmanager
     def register_diffusion_parameters(self):
         prev_dict = [k for k in self.__dict__]
@@ -103,10 +106,12 @@ class DiffusionBase(PostInitModule):
             if k not in prev_dict:
                 self._param_names.add(k)
 
+
     @property
     def device(self):
         return self.betas.device
     
+
     @staticmethod
     def _extract(coeff, t, x_shape):
         """ 
@@ -136,21 +141,16 @@ class DiffusionBase(PostInitModule):
 
     
     def _predict_xstart_from_eps(self, x_t, t, eps):
+        # used in DDIM Sampler
         assert x_t.shape == eps.shape, "shape of x_t: {}, shape of eps: {}".format(x_t.shape, eps.shape)
         return (
             self._extract(self.sqrt_recip_alphas_cumprod.to(x_t.device), t, x_t.shape) * x_t
             - self._extract(self.sqrt_recip_m1_alphas_cumprod.to(x_t.device), t, x_t.shape) * eps
         )
+
     
-    # def _predict_xstart_from_xprev(self, x_t, t, xprev):
-    #     assert x_t.shape == xprev.shape, "x_t={}, xprev={}".format(x_t.shape, xprev.shape)
-    #     return ( # (xprev - coef2 * x_t) / coef1
-    #         unsqueeze_as(1.0 / self.posterior_mean_coef1[t], x_t.shape) * xprev
-    #         - unsqueeze_as(self.posterior_mean_coef2[t] / self.posterior_mean_coef1[t], x_t.shape) * x_t
-    #     )
-    
-    # TODO: check if it works
     def _predict_xstart_from_xprev(self, x_t, t, xprev):
+        # used in DDIM Sampler
         print("_predict_xstart_from_xprev_diffuscene")
         assert x_t.shape == xprev.shape, "shape of x_t: {}, shape of xprev: {}".format(x_t.shape, xprev.shape)
         return ( # (xprev - coef2 * x_t) / coef1
@@ -158,15 +158,10 @@ class DiffusionBase(PostInitModule):
             - self._extract((self.posterior_mean_coef2 / self.posterior_mean_coef1).to(x_t.device), t, x_t.shape) * x_t
         )
     
-    # def _predict_eps_from_xstart(self, x_t, t, pred_xstart):
-    #     return (
-    #         unsqueeze_as(self.sqrt_recip_alphas_cumprod[t], x_t.shape) * x_t - pred_xstart
-    #         / unsqueeze_as(self.sqrt_recip_m1_alphas_cumprod[t], x_t.shape)
-    #     )
-    
     
     def _predict_eps_from_xstart(self, x_t, t, x_0):
-        print("_predict_eps_from_xstart_diffuscene") # TODO: check if it works
+        # used in DDIM Sampler
+        print("_predict_eps_from_xstart_diffuscene")
         return (
             self._extract(self.sqrt_recip_alphas_cumprod.to(x_t.device), t, x_t.shape) * x_t - x_0
             / self._extract(self.sqrt_recip_m1_alphas_cumprod.to(x_t.device), t, x_t.shape)
@@ -175,11 +170,7 @@ class DiffusionBase(PostInitModule):
     
     def q_sample(self, x_start, t, noise=None):
         """ Diffuse the data (t == 0 means diffused for 1 step)     q(x_t | x_0) """
-        if noise is None:
-            if isfunction(lambda: torch.rand_like(x_start)):
-                noise = lambda: torch.randn_like(x_start)()
-            else:
-                noise = lambda: torch.randn_like(x_start)
+        noise = default(noise, lambda: torch.randn_like(x_start))
         return (
             self._extract(self.sqrt_alphas_cumprod.to(x_start.device), t, x_start.shape) * x_start
             + self._extract(self.sqrt_one_minus_alphas_cumprod.to(x_start.device), t, x_start.shape) * noise
@@ -202,7 +193,7 @@ class DiffusionBase(PostInitModule):
 
     def q_mean_variance(self, x_start, t):
         """ Diffusion step: q(x_t | x_{t-1}) """
-        print("q_mean_variance_diffuscene") # TODO: check if it works
+        print("q_mean_variance_diffuscene") # TODO: check if it works - Where is this function used?
         mean = self._extract(self.sqrt_alphas_cumprod.to(x_start.device), t, x_start.shape) * x_start
         variance = self._extract(1. - self.alphas_cumprod.to(x_start.device), t, x_start.shape)
         log_variance = self._extract(self.log_one_minus_alphas_cumprod.to(x_start.device), t, x_start.shape)

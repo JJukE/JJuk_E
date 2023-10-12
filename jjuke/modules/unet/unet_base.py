@@ -143,7 +143,7 @@ class UnetBase(nn.Module):
     def downsample_factor(self):
         return 2 ** (len(self.downs) - 1)
     
-    def forward(self, x, time, context=None, context_cross=None, x_self_cond = None):
+    def forward(self, x, time, context = None, context_cross = None, x_self_cond = None):
         assert all([(d % self.downsample_factor) == 0 for d in x.shape[-2:]]), "Input dimensions {} need to be devidible by {}.".format(x.shape[-2:], self.downsample_factor)
 
         if context is not None or context_cross is not None:
