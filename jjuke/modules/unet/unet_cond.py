@@ -10,10 +10,10 @@ from torch import nn
 from einops import rearrange, pack, unpack
 from einops.layers.torch import Rearrange
 
-from modules  import default, cast_tuple
-from modules.unet.base_modules import conv_nd, RandomOrLearnedSinusoidalPosEmb, SinusoidalPosEmb, \
+from jjuke.modules.common  import default, cast_tuple
+from jjuke.modules.unet.base_modules import conv_nd, RandomOrLearnedSinusoidalPosEmb, SinusoidalPosEmb, \
     Residual, PreNorm
-from modules.unet.unet_modules import attention_nd, linear_attention_nd, ResnetBlock, CrossEmbedLayer, \
+from jjuke.modules.unet.unet_modules import attention_nd, linear_attention_nd, ResnetBlock, CrossEmbedLayer, \
     Downsample, Upsample, UpsampleCombiner
 
 

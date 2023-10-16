@@ -8,7 +8,7 @@ from torch import Tensor
 from torch import nn
 from einops import rearrange
 
-from modules import default
+from jjuke.modules.common import default
 
 
 class PostInitModule(nn.Module):

@@ -7,7 +7,7 @@ import torch.distributed as dist
 from torch import nn
 from torch.utils import model_zoo
 
-from network_utils.distributed import is_dist_avail_and_initialized
+from jjuke.network_utils.distributed import is_dist_avail_and_initialized
 
 
 class CheckpointIO(object):

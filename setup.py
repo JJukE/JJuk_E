@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="jjuke",
-    version="0.0.3.3",
+    version="0.0.4.9",
     description="Modules and utilities for Deep Learning training or inference with Pytorch by JJukE",
     author="JJukE",
     author_email="psj9156@gmail.com",
