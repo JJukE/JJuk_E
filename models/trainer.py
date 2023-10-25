@@ -17,9 +17,9 @@ from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from net_utils import utils, logger, dist
-from datasets.utils import infinite_dataloader
-from models.optimizer import SAM, ESAM
+from ..net_utils import utils, logger, dist, try_remove_file
+from ..datasets.dataloaders import infinite_dataloader
+from ..models.optimizer import SAM, ESAM
 
 
 class BasePreprocessor(metaclass=ABCMeta):
@@ -397,7 +397,7 @@ class BaseTrainer(BaseWorker):
                 if len(saved_files) > self.num_saves:
                     to_deletes = saved_files[: len(saved_files) - self.num_saves]
                     for to_delete in to_deletes:
-                        utils.try_remove_file(str(to_delete))
+                        try_remove_file(str(to_delete))
 
                 flag = "*"
                 improved = self.epoch > self.epochs_to_save or self.args.debug or not self.save_only_improved
@@ -555,7 +555,7 @@ class StepTrainer(BaseTrainer):
                 if len(saved_files) > self.num_saves:
                     to_deletes = saved_files[: len(saved_files) - self.num_saves]
                     for to_delete in to_deletes:
-                        utils.try_remove_file(str(to_delete))
+                        try_remove_file(str(to_delete))
 
                 flag = "*"
                 improved = self.epoch > self.epochs_to_save or self.args.debug or not self.save_only_improved

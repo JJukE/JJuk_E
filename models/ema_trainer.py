@@ -10,8 +10,8 @@ import torch
 import torch.distributed as dist
 from torch import nn
 
-from models.trainer import BaseTrainer, StepTrainer
-from net_utils import try_remove_file
+from ..net_utils import try_remove_file
+from .trainer import BaseTrainer, StepTrainer
 
 
 def ema(source: Union[OrderedDict, nn.Module], target: Union[OrderedDict, nn.Module], decay: float):

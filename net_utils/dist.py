@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.distributed as dist
 
@@ -30,6 +31,20 @@ def safe_barrier():
 def safe_broadcast(x, src):
     if dist.is_initialized():
         dist.broadcast(x, src)
+
+
+def safe_to_tensor(x, device="cpu"):
+    non_blocking = device != "cpu"
+
+    if isinstance(x, np.ndarray):
+        return torch.from_numpy(x).to(device, non_blocking=non_blocking)
+    elif isinstance(x, torch.Tensor):
+        return x.to(device, non_blocking=non_blocking)
+    elif isinstance(x, (list, tuple)):
+        return torch.tensor(x, device=device)
+    elif isinstance(x, dict):
+        return {k: safe_to_tensor(v, device=device) for k, v in x.items()}
+    return x
 
 
 def get_world_size():
