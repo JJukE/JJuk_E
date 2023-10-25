@@ -19,16 +19,71 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import argparse
 import os
+import argparse
+import importlib
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 
 from easydict import EasyDict
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
-from . import get_obj_from_str, instantiate_from_config
+
+def _parse_pyinstance_dict(params: dict):
+    out_dict = EasyDict()
+
+    for p, v in params.items():
+        if p == "__pyinstance__":
+            inst = instantiate_from_config(v)
+            return inst
+        elif isinstance(v, dict):
+            out_dict[p] = _parse_pyinstance_dict(v)
+        elif isinstance(v, (list, tuple)):
+            out_dict[p] = _parse_pyinstance_list(v)
+        else:
+            out_dict[p] = v
+
+    return out_dict
+
+
+def _parse_pyinstance_list(params: list):
+    out_list = []
+
+    for v in params:
+        if isinstance(v, dict):
+            out_list.append(_parse_pyinstance_dict(v))
+        elif isinstance(v, (list, tuple)):
+            out_list.append(_parse_pyinstance_list(v))
+        else:
+            out_list.append(v)
+
+    return out_list
+
+
+def instantiate_from_config(config: dict, *args, **kwargs):
+    config = deepcopy(config)
+
+    # https://github.com/CompVis/latent-diffusion/blob/a506df5756472e2ebaf9078affdde2c4f1502cd4/ldm/util.py#L78
+    if not "target" in config:
+        raise KeyError("Expected key `target` to instantiate.")
+
+    # parse __pyinstance__
+    argums = config.get("argums", list())
+    argums = _parse_pyinstance_list(argums)
+    params = config.get("params", dict())
+    params = _parse_pyinstance_dict(params)
+
+    return get_obj_from_str(config["target"])(*argums, *args, **params, **kwargs)
+
+
+def get_obj_from_str(string, reload=False):
+    # https://github.com/CompVis/latent-diffusion/blob/a506df5756472e2ebaf9078affdde2c4f1502cd4/ldm/util.py#L88
+    module, cls = string.rsplit(".", 1)
+    if reload:
+        module_imp = importlib.import_module(module)
+        importlib.reload(module_imp)
+    return getattr(importlib.import_module(module, package=None), cls)
 
 
 def _load_yaml_recursive(cfg):

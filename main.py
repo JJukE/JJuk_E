@@ -4,7 +4,9 @@ import torch.multiprocessing as mp
 import torch
 import torch.distributed as dist
 
-from net_utils import logger, options, utils
+from jjuke import logger, options
+from jjuke.net_utils import seed_everything, find_free_port
+from jjuke.net_utils.dist import safe_barrier
 
 
 def main_worker(rank, args):
@@ -23,17 +25,17 @@ def main_worker(rank, args):
     args.log = logger.get_logger()
 
     args.seed += rank
-    utils.seed_everything(args.seed)
+    seed_everything(args.seed)
 
     if args.ddp:
         print("main_worker with rank:{} (gpu:{}) is loaded".format(rank, args.gpu))
     else:
         print("main_worker with gpu:{} in main thread is loaded".format(args.gpu))
 
-    trainer = utils.instantiate_from_config(args.trainer, args)
+    trainer = options.instantiate_from_config(args.trainer, args)
     trainer.fit()
 
-    utils.dist.safe_barrier()
+    safe_barrier()
 
 
 def main():
@@ -43,7 +45,7 @@ def main():
 
     args.world_size = len(args.gpus)
     args.ddp = args.world_size > 1
-    port = utils.find_free_port()
+    port = find_free_port()
     args.dist_url = "tcp://127.0.0.1:{}".format(port)
 
     if args.ddp:

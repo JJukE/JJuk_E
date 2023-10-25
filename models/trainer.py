@@ -17,7 +17,7 @@ from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from ..net_utils import utils, logger, dist, try_remove_file
+from ..net_utils import logger, options, dist, try_remove_file, AverageMeters
 from ..datasets.dataloaders import infinite_dataloader
 from ..models.optimizer import SAM, ESAM
 
@@ -193,10 +193,10 @@ class BaseTrainer(BaseWorker):
         return model
 
     def build_network(self):
-        self.model_src = utils.instantiate_from_config(self.args.model).cuda()
+        self.model_src = options.instantiate_from_config(self.args.model).cuda()
         self.model_optim = self._make_distributed_model(self.model_src)
 
-        self.optim = utils.instantiate_from_config(self.args.optim, self.model_optim.parameters())
+        self.optim = options.instantiate_from_config(self.args.optim, self.model_optim.parameters())
 
         if self.use_sam:
             self.optim = SAM(self.model_optim.parameters(), self.optim)
@@ -204,7 +204,7 @@ class BaseTrainer(BaseWorker):
             self.optim = ESAM(self.model_optim.parameters(), self.optim)
 
         if "sched" in self.args:
-            self.sched = utils.instantiate_from_config(self.args.sched, self.optim)
+            self.sched = options.instantiate_from_config(self.args.sched, self.optim)
         else:
             self.sched = None
 
@@ -221,7 +221,7 @@ class BaseTrainer(BaseWorker):
             self.epoch = ckpt["epoch"]
 
     def build_dataset(self):
-        dls: Sequence[Dataset] = utils.instantiate_from_config(self.args.dataset)
+        dls: Sequence[Dataset] = options.instantiate_from_config(self.args.dataset)
         if len(dls) == 3:
             self.dl_train, self.dl_valid, self.dl_test = dls
             l1, l2, l3 = len(self.dl_train.dataset), len(self.dl_valid.dataset), len(self.dl_test.dataset)
@@ -234,7 +234,7 @@ class BaseTrainer(BaseWorker):
             raise NotImplementedError
 
     def build_preprocessor(self):
-        self.preprocessor: BasePreprocessor = utils.instantiate_from_config(self.args.preprocessor, device=self.device)
+        self.preprocessor: BasePreprocessor = options.instantiate_from_config(self.args.preprocessor, device=self.device)
 
     def build_sample_idx(self):
         pass
@@ -276,7 +276,7 @@ class BaseTrainer(BaseWorker):
 
     def train_epoch(self, dl: "DataLoader", prefix="Train"):
         self.model_optim.train()
-        o = utils.AverageMeters()
+        o = AverageMeters()
 
         if self.rankzero:
             desc = f"{prefix} [{self.epoch:04d}/{self.args.epochs:04d}]"
@@ -336,7 +336,7 @@ class BaseTrainer(BaseWorker):
     @torch.no_grad()
     def valid_epoch(self, dl: "DataLoader", prefix="Valid"):
         self.model_optim.eval()
-        o = utils.AverageMeters()
+        o = AverageMeters()
 
         if self.rankzero:
             desc = f"{prefix} [{self.epoch:04d}/{self.args.epochs:04d}]"
@@ -465,7 +465,7 @@ class StepTrainer(BaseTrainer):
 
         self.valid_per_steps = valid_per_steps
 
-    def train_batch(self, batch, o: utils.AverageMeters):
+    def train_batch(self, batch, o: AverageMeters):
         self.on_train_batch_start()
 
         s = self.preprocessor(batch, augmentation=True)
@@ -502,7 +502,7 @@ class StepTrainer(BaseTrainer):
 
     @torch.no_grad()
     def valid_epoch(self, dl: "DataLoader", prefix="Valid"):
-        o = utils.AverageMeters()
+        o = AverageMeters()
         desc = f"{prefix} [{self.epoch:04d}/{self.args.epochs:04d}]"
 
         with tqdm(total=len(dl.dataset), ncols=self.tqdm_ncols, file=sys.stdout, desc=desc, disable=not self.rankzero) as pbar:
@@ -599,7 +599,7 @@ class StepTrainer(BaseTrainer):
             self.sample()
 
     def fit(self):
-        o_train = utils.AverageMeters()
+        o_train = AverageMeters()
         with tqdm(
             total=self.args.epochs, ncols=self.tqdm_ncols, file=sys.stdout, disable=not self.rankzero, desc="Step"
         ) as pbar:
@@ -613,7 +613,7 @@ class StepTrainer(BaseTrainer):
                     print(flush=True)
                     self.model_optim.eval()
                     self.stage_eval(o_train)
-                    o_train = utils.AverageMeters()
+                    o_train = AverageMeters()
 
                 pbar.update()
 

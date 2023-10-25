@@ -1,9 +1,7 @@
-import importlib
 import os
 import time
 import random
 from collections import defaultdict
-from copy import deepcopy
 
 import numpy as np
 import torch
@@ -17,8 +15,6 @@ __all__ = [
     "seed_everything",
     "find_free_port",
     "get_model_params",
-    "instantiate_from_config",
-    "get_obj_from_str",
     "try_remove_file"
 ]
 
@@ -103,62 +99,6 @@ def get_model_params(model):
     for param in model.parameters():
         model_size += param.data.nelement()
     return model_size
-
-
-def _parse_pyinstance_dict(params: dict):
-    out_dict = EasyDict()
-
-    for p, v in params.items():
-        if p == "__pyinstance__":
-            inst = instantiate_from_config(v)
-            return inst
-        elif isinstance(v, dict):
-            out_dict[p] = _parse_pyinstance_dict(v)
-        elif isinstance(v, (list, tuple)):
-            out_dict[p] = _parse_pyinstance_list(v)
-        else:
-            out_dict[p] = v
-
-    return out_dict
-
-
-def _parse_pyinstance_list(params: list):
-    out_list = []
-
-    for v in params:
-        if isinstance(v, dict):
-            out_list.append(_parse_pyinstance_dict(v))
-        elif isinstance(v, (list, tuple)):
-            out_list.append(_parse_pyinstance_list(v))
-        else:
-            out_list.append(v)
-
-    return out_list
-
-
-def instantiate_from_config(config: dict, *args, **kwargs):
-    config = deepcopy(config)
-
-    # https://github.com/CompVis/latent-diffusion/blob/a506df5756472e2ebaf9078affdde2c4f1502cd4/ldm/util.py#L78
-    if not "target" in config:
-        raise KeyError("Expected key `target` to instantiate.")
-
-    # parse __pyinstance__
-    argums = config.get("argums", list())
-    argums = _parse_pyinstance_list(argums)
-    params = config.get("params", dict())
-    params = _parse_pyinstance_dict(params)
-
-    return get_obj_from_str(config["target"])(*argums, *args, **params, **kwargs)
-
-
-def get_obj_from_str(string, reload=False):
-    # https://github.com/CompVis/latent-diffusion/blob/a506df5756472e2ebaf9078affdde2c4f1502cd4/ldm/util.py#L88
-    module, cls = string.rsplit(".", 1)
-    if reload:
-        module_imp = importlib.import_module(module)
-        importlib.reload(module_imp)
-    return getattr(importlib.import_module(module, package=None), cls)
 
 
 # def tensor_to_image(images, nrow):
