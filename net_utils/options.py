@@ -137,16 +137,10 @@ def get_config(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_file", type=str)
     parser.add_argument("--gpus", type=str)
-    parser.add_argument("--no_vscode_debug", action="store_true")
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--outdir")
 
     opt, unknown = parser.parse_known_args(argv)
-
-    if not opt.no_vscode_debug:
-        opt.config_file = "./configs/DiffuScene/diffuscene.yaml"
-        opt.gpus = "0"
-        opt.outdir = "/root/hdd1/SGTD/diffuscene_implementation"
 
     cfg = load_yaml(opt.config_file)
     cli = OmegaConf.from_dotlist(unknown)
@@ -167,22 +161,26 @@ def get_config(argv=None):
     #     n.year%100, n.month, n.day
     # )
     timestr += "_" + Path(opt.config_file).stem
-    if args.memo:
+    if "memo" in args.keys():
         timestr += "_%s" % args.memo
+    
     if args.debug:
         timestr += "_debug"
 
-    args.exp_path = os.path.join(args["exp_dir"], timestr)
-    (Path(args.exp_path) / "samples").mkdir(parents=True, exist_ok=True)
-    print("Start on exp_path:", args.exp_path)
+    if "exp_dir" in args.keys():
+        args.exp_path = os.path.join(args["exp_dir"], timestr)
+        (Path(args.exp_path) / "samples").mkdir(parents=True, exist_ok=True)
+        print("Start on exp_path:", args.exp_path)
 
-    with open(os.path.join(args.exp_path, "args.yaml"), "w") as f:
-        OmegaConf.save(args, f)
+        with open(os.path.join(args.exp_path, "args.yaml"), "w") as f:
+            OmegaConf.save(args, f)
 
-    print(OmegaConf.to_yaml(args, resolve=True))
-    args = OmegaConf.to_container(args, resolve=True)
-    args = EasyDict(args)
-    args.exp_path = Path(args.exp_path)
+        print(OmegaConf.to_yaml(args, resolve=True))
+        args = OmegaConf.to_container(args, resolve=True)
+        args = EasyDict(args)
+        args.exp_path = Path(args.exp_path)
+    else:
+        print("There's no any experiment directory in the config file.")
 
     args = _postprocess_yaml_recursive(args)
 

@@ -286,7 +286,7 @@ class BaseTrainer(BaseWorker):
 
             s = self.preprocessor(batch, augmentation=True)
             with autocast(self.mixed_precision):
-                loss_dict = self.step(s)
+                losses_dict = self.step(s)
 
             if self.mixed_precision:
                 self.scaler.scale(s.log.loss).backward()
@@ -304,16 +304,11 @@ class BaseTrainer(BaseWorker):
                     self.optim.first_step(zero_grad=True)
                     s = self.preprocessor(batch, augmentation=True)
                     with autocast(self.mixed_precision):
-                        loss_dict = self.step(s)
+                        losses_dict = self.step(s)
                     s.log.loss.backward()
                     self.optim.second_step(zero_grad=False)
                 else:
                     self.optim.step()
-
-            if self.rankzero and self.args.logging.use_wandb:
-                loss_reduced = dist.reduce_dict(loss_dict)
-                loss_dict = {k: v.mean().item() for k, v in loss_reduced.items()}
-                self.log_wandb(loss_dict, "train")
 
             self.optim.zero_grad()
 
@@ -329,9 +324,10 @@ class BaseTrainer(BaseWorker):
 
             if self.args.debug:
                 break
+
         if self.rankzero:
             t.close()
-        return o
+        return o, losses_dict
 
     @torch.no_grad()
     def valid_epoch(self, dl: "DataLoader", prefix="Valid"):
@@ -345,15 +341,10 @@ class BaseTrainer(BaseWorker):
             self.on_valid_batch_start()
 
             s = self.preprocessor(batch, augmentation=False)
-            loss_dict = self.step(s)
+            losses_dict = self.step(s)
 
             n, g = self.collect_log(s)
             o.update_dict(n, g)
-
-            if self.rankzero and self.args.logging.use_wandb:
-                loss_reduced = dist.reduce_dict(loss_dict)
-                loss_dict = {k: v.mean().item() for k, v in loss_reduced.items()}
-                self.log_wandb(loss_dict, "valid")
 
             if self.rankzero:
                 t.set_postfix_str(o.to_msg(), refresh=False)
@@ -363,9 +354,10 @@ class BaseTrainer(BaseWorker):
 
             if self.args.debug:
                 break
+
         if self.rankzero:
             t.close()
-        return o
+        return o, losses_dict
 
     @torch.no_grad()
     def evaluation(self, *o_lst):
@@ -424,9 +416,20 @@ class BaseTrainer(BaseWorker):
         return improved
 
     def fit_loop(self):
-        o1 = self.train_epoch(self.dl_train)
-        o2 = self.valid_epoch(self.dl_valid)
+        o1, train_losses_dict = self.train_epoch(self.dl_train)
+        o2, val_losses_dict = self.valid_epoch(self.dl_valid)
         improved = self.evaluation(o2, o1)
+
+        # wandb logging for each epoch
+        if self.rankzero and self.args.logging.use_wandb:
+            train_losses_reduced = dist.reduce_dict(train_losses_dict)
+            train_losses_dict = {k: v.mean().item() for k, v in train_losses_reduced.items()}
+            self.log_wandb(train_losses_dict, "train", epoch=self.epoch + 1)
+
+            val_losses_reduced = dist.reduce_dict(val_losses_dict)
+            val_losses_dict = {k: v.mean().item() for k, v in val_losses_reduced.items()}
+            self.log_wandb(val_losses_dict, "valid", epoch=self.epoch + 1)
+
         if improved:
             self.sample()
 
@@ -447,11 +450,17 @@ class BaseTrainer(BaseWorker):
             else:
                 self.sched.step()
     
-    def log_wandb(self, losses_dict, phase):
+    def log_wandb(self, losses_dict, phase, epoch=None):
         dict_ = dict()
         for k, v in losses_dict.items():
             dict_[phase + "/" + k] = v
-        wandb.log(dict_)
+        
+        if epoch is not None:
+            # epoch training
+            wandb.log(dict_, step=epoch)
+        else:
+            # step training
+            wandb.log(dict_)
 
 
 class StepTrainer(BaseTrainer):
@@ -470,7 +479,7 @@ class StepTrainer(BaseTrainer):
 
         s = self.preprocessor(batch, augmentation=True)
         with autocast(self.mixed_precision):
-            loss_dict = self.step(s)
+            losses_dict = self.step(s)
 
         if self.mixed_precision:
             self.scaler.scale(s.log.loss).backward()
@@ -484,11 +493,6 @@ class StepTrainer(BaseTrainer):
             if self.clip_grad > 0:  # gradient clipping
                 nn.utils.clip_grad.clip_grad_norm_(self.model_optim.parameters(), self.clip_grad)
             self.optim.step()
-
-        if self.rankzero and self.args.logging.use_wandb:
-            loss_reduced = dist.reduce_dict(loss_dict)
-            loss_dict = {k: v.mean().item() for k, v in loss_reduced.items()}
-            self.log_wandb(loss_dict, "train")
         
         self.optim.zero_grad()
 
@@ -498,7 +502,7 @@ class StepTrainer(BaseTrainer):
         self.on_train_batch_end(s)
         self.step_sched(is_on_batch=True)
 
-        return s
+        return s, losses_dict
 
     @torch.no_grad()
     def valid_epoch(self, dl: "DataLoader", prefix="Valid"):
@@ -508,15 +512,10 @@ class StepTrainer(BaseTrainer):
         with tqdm(total=len(dl.dataset), ncols=self.tqdm_ncols, file=sys.stdout, desc=desc, disable=not self.rankzero) as pbar:
             for batch in dl:
                 s = self.preprocessor(batch, augmentation=False)
-                loss_dict = self.step(s)
+                losses_dict = self.step(s)
 
                 n, g = self.collect_log(s)
                 o.update_dict(n, g)
-
-                if self.rankzero and self.args.logging.use_wandb:
-                    loss_reduced = dist.reduce_dict(loss_dict)
-                    loss_dict = {k: v.mean().item() for k, v in loss_reduced.items()}
-                    self.log_wandb(loss_dict, "valid")
 
                 pbar.set_postfix_str(o.to_msg(), refresh=False)
                 pbar.update(min(n, pbar.total - pbar.n))
@@ -525,7 +524,7 @@ class StepTrainer(BaseTrainer):
 
                 if self.args.debug:
                     break
-        return o
+        return o, losses_dict
 
     @torch.no_grad()
     def evaluation(self, *o_lst):
@@ -574,11 +573,6 @@ class StepTrainer(BaseTrainer):
             self.log.info(msg)
             self.log.flush()
 
-            if self.args.logging.use_wandb:
-                loss_reduced = dist.reduce_dict(o_lst) # TODO: check
-                loss_dict = {k: v.mean().item() for k, v in loss_reduced.items()}
-                self.log_wandb(loss_dict, "eval")
-
         # share improved condition with other nodes
         if self.ddp:
             improved = torch.tensor([improved], device="cuda")
@@ -592,7 +586,14 @@ class StepTrainer(BaseTrainer):
 
     @torch.no_grad()
     def stage_eval(self, o_train):
-        o_valid = self.valid_epoch(self.dl_valid)
+        o_valid, losses_dict = self.valid_epoch(self.dl_valid)
+
+        # wandb logging for each epoch
+        if self.rankzero and self.args.logging.use_wandb:
+            loss_reduced = dist.reduce_dict(losses_dict)
+            losses_dict = {k: v.mean().item() for k, v in loss_reduced.items()}
+            self.log_wandb(losses_dict, "valid", epoch=self.epoch) # TODO: check if it works (epoch)
+        
         improved = self.evaluation(o_valid, o_train)
 
         if improved:
@@ -606,7 +607,8 @@ class StepTrainer(BaseTrainer):
             self.model_optim.train()
             for self.epoch, batch in enumerate(infinite_dataloader(self.dl_train), 1):
                 self.model_optim.train()
-                self.train_batch(batch, o_train)
+                _, losses_dict = self.train_batch(batch, o_train)
+
                 pbar.set_postfix_str(o_train.to_msg())
 
                 if self._is_eval_stage:
@@ -621,3 +623,9 @@ class StepTrainer(BaseTrainer):
                     break
                 if self.epoch >= self.args.epochs:
                     break
+
+                # wandb logging for each epoch
+                if self.rankzero and self.args.logging.use_wandb:
+                    loss_reduced = dist.reduce_dict(losses_dict)
+                    losses_dict = {k: v.mean().item() for k, v in loss_reduced.items()}
+                    self.log_wandb(losses_dict, "train", epoch=self.epoch) # TODO: check if it works (epoch)
