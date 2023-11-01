@@ -1,6 +1,7 @@
 from inspect import isfunction
 
 import torch.nn.functional as F
+from torch import nn
 
 from .resize_right import resize
 
@@ -8,7 +9,11 @@ __all__ = [
     "default",
     "cycle",
     "cast_tuple",
-    "resize_feature_to"
+    "resize_feature_to",
+    "max_neg_value",
+    "conv_nd",
+    "avg_pool_nd",
+    "zero_module"
 ]
 
 
@@ -48,3 +53,24 @@ def resize_feature_to(data, target_size, clamp_range = None, nearest = False, **
         out = out.clamp(*clamp_range)
     
     return out
+
+
+def max_neg_value(t):
+    return -torch.finfo(t.dtype).max
+
+
+def conv_nd(unet_dim, *args, **kwargs):
+    """ Specify Conv for general U-Net """
+    return {1: nn.Conv1d, 2: nn.Conv2d, 3: nn.Conv3d}[unet_dim](*args, **kwargs)
+
+
+def avg_pool_nd(unet_dim, *args, **kwargs):
+    """ Specify average pooling layer for general U-Net """
+    return {1: nn.AvgPool1d, 2: nn.AvgPool2d, 3: nn.AvgPool3d}[unet_dim](*args, **kwargs)
+
+
+def zero_module(module):
+    """ Zero out the params of a module and return it """
+    for p in module.parameters():
+        p.detach().zero_()
+    return module
