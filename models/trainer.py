@@ -17,7 +17,8 @@ from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from ..net_utils import logger, options, dist, try_remove_file, AverageMeters
+from ..net_utils import logger, options, try_remove_file, AverageMeters
+from ..net_utils.dist import reduce_dict
 from ..datasets.dataloaders import infinite_dataloader
 from ..models.optimizer import SAM, ESAM
 
@@ -422,12 +423,12 @@ class BaseTrainer(BaseWorker):
 
         # wandb logging for each epoch
         if self.rankzero and self.args.logging.use_wandb:
-            train_losses_reduced = dist.reduce_dict(train_losses_dict)
-            train_losses_dict = {k: v.mean().item() for k, v in train_losses_reduced.items()}
+            train_loss_reduced = reduce_dict(train_losses_dict)
+            train_losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in train_loss_reduced.items()}
             self.log_wandb(train_losses_dict, "train", epoch=self.epoch + 1)
 
-            val_losses_reduced = dist.reduce_dict(val_losses_dict)
-            val_losses_dict = {k: v.mean().item() for k, v in val_losses_reduced.items()}
+            val_loss_reduced = reduce_dict(val_losses_dict)
+            val_losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in val_loss_reduced.items()}
             self.log_wandb(val_losses_dict, "valid", epoch=self.epoch + 1)
 
         if improved:
@@ -528,6 +529,7 @@ class StepTrainer(BaseTrainer):
 
     @torch.no_grad()
     def evaluation(self, *o_lst):
+        assert self.monitor in o_lst[0].data, f"No monitor {self.monitor} in validation results: {list(o_lst[0].data.keys())}"
         self.step_sched(o_lst[0][self.monitor], is_on_epoch=True)
 
         improved = False
@@ -588,11 +590,11 @@ class StepTrainer(BaseTrainer):
     def stage_eval(self, o_train):
         o_valid, losses_dict = self.valid_epoch(self.dl_valid)
 
-        # wandb logging for each epoch
+        # wandb logging for each step
         if self.rankzero and self.args.logging.use_wandb:
-            loss_reduced = dist.reduce_dict(losses_dict)
-            losses_dict = {k: v.mean().item() for k, v in loss_reduced.items()}
-            self.log_wandb(losses_dict, "valid", epoch=self.epoch) # TODO: check if it works (epoch)
+            loss_reduced = reduce_dict(losses_dict)
+            losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
+            self.log_wandb(losses_dict, "valid", epoch=self.epoch)
         
         improved = self.evaluation(o_valid, o_train)
 
@@ -624,8 +626,8 @@ class StepTrainer(BaseTrainer):
                 if self.epoch >= self.args.epochs:
                     break
 
-                # wandb logging for each epoch
+                # wandb logging for each step
                 if self.rankzero and self.args.logging.use_wandb:
-                    loss_reduced = dist.reduce_dict(losses_dict)
-                    losses_dict = {k: v.mean().item() for k, v in loss_reduced.items()}
-                    self.log_wandb(losses_dict, "train", epoch=self.epoch) # TODO: check if it works (epoch)
+                    loss_reduced = reduce_dict(losses_dict)
+                    losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
+                    self.log_wandb(losses_dict, "train", epoch=self.epoch)

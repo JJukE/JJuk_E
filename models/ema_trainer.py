@@ -11,6 +11,7 @@ import torch.distributed as dist
 from torch import nn
 
 from ..net_utils import try_remove_file
+from ..net_utils.dist import reduce_dict
 from .trainer import BaseTrainer, StepTrainer
 
 
@@ -147,11 +148,6 @@ class StepTrainerEMA(StepTrainer):
             self.log.info(msg)
             self.log.flush()
 
-            if self.rankzero and self.args.logging.use_wandb:
-                loss_reduced = dist.reduce_dict(o_lst) # TODO: check
-                loss_dict = {k: v.mean().item() for k, v in loss_reduced.items()}
-                self.log_wandb(loss_dict, "eval")
-
         # share improved condition with other nodes
         if self.ddp:
             improved = torch.tensor([improved], device="cuda")
@@ -164,13 +160,29 @@ class StepTrainerEMA(StepTrainer):
 
     @torch.no_grad()
     def stage_eval(self, o_train):
-        o_valid = self.valid_epoch(self.dl_valid)
+        o_valid, losses_dict = self.valid_epoch(self.dl_valid)
+        
+        # wandb logging for each step
+        if self.rankzero and self.args.logging.use_wandb:
+            loss_reduced = reduce_dict(losses_dict)
+            losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
+            self.log_wandb(losses_dict, "valid", epoch=self.epoch)
+        
         improved = self.evaluation(o_valid, o_train)
+        
         if improved:
             self.sample(is_ema=False)
 
         with self.ema_state():
-            o_valid_ema = self.valid_epoch(self.dl_valid)
+            o_valid_ema, losses_dict_ema = self.valid_epoch(self.dl_valid)
+            
+            # wandb logging for each step
+            if self.rankzero and self.args.logging.use_wandb:
+                loss_reduced = reduce_dict(losses_dict)
+                losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
+                self.log_wandb(losses_dict, "valid_ema", epoch=self.epoch)
+            
             improved = self.evaluation_ema(o_valid_ema, o_train)
+            
             if improved:
                 self.sample(is_ema=True)
