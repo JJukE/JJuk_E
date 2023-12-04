@@ -163,10 +163,10 @@ class StepTrainerEMA(StepTrainer):
         o_valid, losses_dict = self.valid_epoch(self.dl_valid)
         
         # wandb logging for each step
-        if self.rankzero and self.args.logging.use_wandb:
+        if self.args.logging.use_wandb:
             loss_reduced = reduce_dict(losses_dict)
             losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
-            self.log_wandb(losses_dict, "valid", epoch=self.epoch)
+            self.log_wandb(losses_dict, "valid")
         
         improved = self.evaluation(o_valid, o_train)
         
@@ -177,10 +177,10 @@ class StepTrainerEMA(StepTrainer):
             o_valid_ema, losses_dict_ema = self.valid_epoch(self.dl_valid)
             
             # wandb logging for each step
-            if self.rankzero and self.args.logging.use_wandb:
+            if self.args.logging.use_wandb:
                 loss_reduced = reduce_dict(losses_dict)
                 losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
-                self.log_wandb(losses_dict, "valid_ema", epoch=self.epoch)
+                self.log_wandb(losses_dict, "valid_ema")
             
             improved = self.evaluation_ema(o_valid_ema, o_train)
             

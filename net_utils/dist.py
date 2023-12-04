@@ -73,10 +73,13 @@ def reduce_dict(input_dict, average=True):
         # sort the keys so that they are consistent across processes
         for k in sorted(input_dict.keys()):
             names.append(k)
-            values.append(input_dict[k])
+            value = input_dict[k]
+            if not isinstance(value, torch.Tensor):
+                value = torch.tensor(value).cuda()
+            values.append(value)
         values = torch.stack(values, dim=0)
         dist.all_reduce(values)
         if average:
             values /= world_size
-        reduced_dict = {k: v for k, v in zip(names, values)}
+        reduced_dict = {k: v.item() if v.numel() == 1 else v for k, v in zip(names, values)}
     return reduced_dict

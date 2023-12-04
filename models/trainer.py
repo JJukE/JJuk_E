@@ -422,7 +422,7 @@ class BaseTrainer(BaseWorker):
         improved = self.evaluation(o2, o1)
 
         # wandb logging for each epoch
-        if self.rankzero and self.args.logging.use_wandb:
+        if self.args.logging.use_wandb:
             train_loss_reduced = reduce_dict(train_losses_dict)
             train_losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in train_loss_reduced.items()}
             self.log_wandb(train_losses_dict, "train", epoch=self.epoch + 1)
@@ -456,12 +456,15 @@ class BaseTrainer(BaseWorker):
         for k, v in losses_dict.items():
             dict_[phase + "/" + k] = v
         
-        if epoch is not None:
-            # epoch training
-            wandb.log(dict_, step=epoch)
+        if self.rankzero:
+            if epoch is not None:
+                # epoch training
+                wandb.log(dict_, step=epoch)
+            else:
+                # step training
+                wandb.log(dict_)
         else:
-            # step training
-            wandb.log(dict_)
+            return
 
 
 class StepTrainer(BaseTrainer):
@@ -591,10 +594,10 @@ class StepTrainer(BaseTrainer):
         o_valid, losses_dict = self.valid_epoch(self.dl_valid)
 
         # wandb logging for each step
-        if self.rankzero and self.args.logging.use_wandb:
+        if self.args.logging.use_wandb:
             loss_reduced = reduce_dict(losses_dict)
             losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
-            self.log_wandb(losses_dict, "valid", epoch=self.epoch)
+            self.log_wandb(losses_dict, "valid")
         
         improved = self.evaluation(o_valid, o_train)
 
@@ -627,7 +630,7 @@ class StepTrainer(BaseTrainer):
                     break
 
                 # wandb logging for each step
-                if self.rankzero and self.args.logging.use_wandb:
+                if self.args.logging.use_wandb:
                     loss_reduced = reduce_dict(losses_dict)
                     losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
-                    self.log_wandb(losses_dict, "train", epoch=self.epoch)
+                    self.log_wandb(losses_dict, "train")
