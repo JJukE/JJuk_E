@@ -138,7 +138,6 @@ def get_config(argv=None):
     parser.add_argument("--config_file", type=str)
     parser.add_argument("--gpus", type=str)
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--outdir")
 
     opt, unknown = parser.parse_known_args(argv)
 
@@ -148,7 +147,6 @@ def get_config(argv=None):
 
     args.gpus = list(map(int, opt.gpus.split(",")))
     args.debug = opt.debug
-    args.outdir = opt.outdir
 
     n = datetime.now()
     # timestr = "{}{:02d}{:02d}_{:02d}{:02d}{:02d}".format(

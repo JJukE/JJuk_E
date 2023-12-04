@@ -177,7 +177,7 @@ class BaseTrainer(BaseWorker):
             self.args.epochs = 2
             self.epochs_to_save = 0
         
-        if self.args.logging.use_wandb:
+        if self.rankzero and self.args.logging.use_wandb:
             print("Loading wandb")
             wandb.init(project=self.args.logging.project, name=self.args.exp_dir.split("/")[-1], config=self.args)
             # wandb.watch(self.net)
