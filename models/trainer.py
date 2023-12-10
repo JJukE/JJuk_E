@@ -180,7 +180,12 @@ class BaseTrainer(BaseWorker):
         if self.rankzero and self.args.logging.use_wandb:
             print("Loading wandb")
             wandb.init(project=self.args.logging.project, name=self.args.exp_dir.split("/")[-1], config=self.args)
-            # wandb.watch(self.net)
+            if args.logging.use_wandb_watch:
+                wandb.watch(
+                    self.model_src,
+                    log = "all",
+                    log_freq = args.logging.watch_freq, # every B batches
+                )
 
     @property
     def model(self):
@@ -210,12 +215,12 @@ class BaseTrainer(BaseWorker):
             self.sched = None
 
         if self.args.logging.log_model:
-            self.log.info(self.model)
+            self.log.info(self.model_src)
         self.log.info("Model Params: %.2fM" % (self.model_params / 1e6))
 
     def load_checkpoint(self, ckpt: PathLike):
         if "model" in ckpt:
-            self.model.load_state_dict(ckpt["model"])
+            self.model_src.load_state_dict(ckpt["model"])
         if "optim" in ckpt:
             self.optim.load_state_dict(ckpt["optim"])
         if "epoch" in ckpt:
@@ -314,6 +319,8 @@ class BaseTrainer(BaseWorker):
             self.optim.zero_grad()
 
             self.step_sched(is_on_batch=True)
+            if self.args.logging.use_wandb:
+                self.log_wandb({"learning_rate": self.optim.param_groups[0]["lr"]}, "train")
 
             n, g = self.collect_log(s)
             o.update_dict(n, g)
@@ -385,7 +392,7 @@ class BaseTrainer(BaseWorker):
                 improved = True
 
                 self.best_epoch = self.epoch
-                self.save(self.args.exp_path / "best_ep{:04d}.pth".format(self.epoch))
+                self.save(self.args.exp_path / "best_ep{:06d}.pth".format(self.epoch))
                 saved_files = sorted(list(self.args.exp_path.glob("best_ep*.pth")))
                 if len(saved_files) > self.num_saves:
                     to_deletes = saved_files[: len(saved_files) - self.num_saves]
@@ -424,7 +431,8 @@ class BaseTrainer(BaseWorker):
         # wandb logging for each epoch
         if self.args.logging.use_wandb:
             train_loss_reduced = reduce_dict(train_losses_dict)
-            train_losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in train_loss_reduced.items()}
+            data_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in train_loss_reduced.items()}
+            data_dict.update({"learning_rate": self.optim.param_groups[0]["lr"]})
             self.log_wandb(train_losses_dict, "train", epoch=self.epoch + 1)
 
             val_loss_reduced = reduce_dict(val_losses_dict)
@@ -451,9 +459,9 @@ class BaseTrainer(BaseWorker):
             else:
                 self.sched.step()
     
-    def log_wandb(self, losses_dict, phase, epoch=None):
+    def log_wandb(self, data_dict, phase, epoch=None):
         dict_ = dict()
-        for k, v in losses_dict.items():
+        for k, v in data_dict.items():
             dict_[phase + "/" + k] = v
         
         if self.rankzero:
@@ -554,7 +562,7 @@ class StepTrainer(BaseTrainer):
                 improved = True
 
                 self.best_epoch = self.epoch
-                self.save(self.args.exp_path / "best_ep{:06d}.pth".format(self.epoch))
+                self.save(self.args.exp_path / "best_ep{:08d}.pth".format(self.epoch))
                 saved_files = sorted(list(self.args.exp_path.glob("best_ep*.pth")))
                 if len(saved_files) > self.num_saves:
                     to_deletes = saved_files[: len(saved_files) - self.num_saves]
@@ -632,5 +640,6 @@ class StepTrainer(BaseTrainer):
                 # wandb logging for each step
                 if self.args.logging.use_wandb:
                     loss_reduced = reduce_dict(losses_dict)
-                    losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
-                    self.log_wandb(losses_dict, "train")
+                    data_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
+                    data_dict.update({"learning_rate": self.optim.param_groups[0]["lr"]})
+                    self.log_wandb(data_dict, "train")

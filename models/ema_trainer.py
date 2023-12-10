@@ -97,7 +97,7 @@ class StepTrainerEMA(StepTrainer):
     def save(self, out_path):
         data = {
             "optim": self.optim.state_dict(),
-            "model": self.model.state_dict(),
+            "model": self.model_src.state_dict(),
             "epoch": self.epoch,
         }
         torch.save(data, str(out_path))
