@@ -178,7 +178,7 @@ class BaseTrainer(BaseWorker):
             self.epochs_to_save = 0
         
         if self.rankzero and self.args.logging.use_wandb:
-            print("Loading wandb")
+            self.log.info("Load wandb")
             wandb.init(project=self.args.logging.project, name=self.args.exp_dir.split("/")[-1], config=self.args)
             if args.logging.use_wandb_watch:
                 wandb.watch(
@@ -220,7 +220,7 @@ class BaseTrainer(BaseWorker):
 
     def load_checkpoint(self, ckpt: PathLike):
         if "model" in ckpt:
-            self.model_src.load_state_dict(ckpt["model"])
+            self.model.load_state_dict(ckpt["model"])
         if "optim" in ckpt:
             self.optim.load_state_dict(ckpt["optim"])
         if "epoch" in ckpt:
@@ -320,7 +320,7 @@ class BaseTrainer(BaseWorker):
 
             self.step_sched(is_on_batch=True)
             if self.args.logging.use_wandb:
-                self.log_wandb({"learning_rate": self.optim.param_groups[0]["lr"]}, "train")
+                self.log_wandb({"learning_rate": self.optim.param_groups[0]["lr"]}, "train", epoch=self.epoch)
 
             n, g = self.collect_log(s)
             o.update_dict(n, g)
@@ -402,7 +402,7 @@ class BaseTrainer(BaseWorker):
                 flag = "*"
                 improved = self.epoch > self.epochs_to_save or self.args.debug or not self.save_only_improved
 
-            msg = "Epoch[%03d/%03d]" % (self.epoch, self.args.epochs)
+            msg = "Epoch[%06d/%06d]" % (self.epoch, self.args.epochs)
             msg += f" {self.monitor}[" + ";".join([o._get(self.monitor) for o in o_lst]) + "]"
             msg += " (best:%.4f%s)" % (self.best, flag)
 
@@ -433,11 +433,11 @@ class BaseTrainer(BaseWorker):
             train_loss_reduced = reduce_dict(train_losses_dict)
             data_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in train_loss_reduced.items()}
             data_dict.update({"learning_rate": self.optim.param_groups[0]["lr"]})
-            self.log_wandb(train_losses_dict, "train", epoch=self.epoch + 1)
+            self.log_wandb(train_losses_dict, "train", epoch=self.epoch)
 
             val_loss_reduced = reduce_dict(val_losses_dict)
             val_losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in val_loss_reduced.items()}
-            self.log_wandb(val_losses_dict, "valid", epoch=self.epoch + 1)
+            self.log_wandb(val_losses_dict, "valid", epoch=self.epoch)
 
         if improved:
             self.sample()
@@ -572,7 +572,7 @@ class StepTrainer(BaseTrainer):
                 flag = "*"
                 improved = self.epoch > self.epochs_to_save or self.args.debug or not self.save_only_improved
 
-            msg = f"Step[%06d/%06d]" % (self.epoch, self.args.epochs)
+            msg = f"Step[%08d/%08d]" % (self.epoch, self.args.epochs)
             msg += f" {self.monitor}[" + ";".join([o._get(self.monitor) for o in o_lst]) + "]"
             msg += " (best:%.4f%s)" % (self.best, flag)
 
@@ -605,7 +605,7 @@ class StepTrainer(BaseTrainer):
         if self.args.logging.use_wandb:
             loss_reduced = reduce_dict(losses_dict)
             losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
-            self.log_wandb(losses_dict, "valid")
+            self.log_wandb(losses_dict, "valid", epoch=self.epoch)
         
         improved = self.evaluation(o_valid, o_train)
 
@@ -614,17 +614,18 @@ class StepTrainer(BaseTrainer):
 
     def fit(self):
         o_train = AverageMeters()
+        start_epoch = self.epoch
         with tqdm(
-            total=self.args.epochs, ncols=self.tqdm_ncols, file=sys.stdout, disable=not self.rankzero, desc="Step"
+            total=self.args.epochs, initial=self.epoch-1, ncols=self.tqdm_ncols, file=sys.stdout, disable=not self.rankzero, desc="Step"
         ) as pbar:
             self.model_optim.train()
-            for self.epoch, batch in enumerate(infinite_dataloader(self.dl_train), 1):
+            for self.epoch, batch in enumerate(infinite_dataloader(self.dl_train, initial=self.epoch), self.epoch):
                 self.model_optim.train()
                 _, losses_dict = self.train_batch(batch, o_train)
 
                 pbar.set_postfix_str(o_train.to_msg())
 
-                if self._is_eval_stage:
+                if self._is_eval_stage and self.epoch != start_epoch:
                     print(flush=True)
                     self.model_optim.eval()
                     self.stage_eval(o_train)
@@ -642,4 +643,4 @@ class StepTrainer(BaseTrainer):
                     loss_reduced = reduce_dict(losses_dict)
                     data_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
                     data_dict.update({"learning_rate": self.optim.param_groups[0]["lr"]})
-                    self.log_wandb(data_dict, "train")
+                    self.log_wandb(data_dict, "train", epoch=self.epoch)

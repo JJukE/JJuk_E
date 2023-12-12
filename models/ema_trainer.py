@@ -125,7 +125,7 @@ class StepTrainerEMA(StepTrainer):
                 improved = True
 
                 self.best_ema_epoch = self.epoch
-                self.save(self.args.exp_path / "best_ema_ep{:06d}.pth".format(self.epoch))
+                self.save(self.args.exp_path / "best_ema_ep{:08d}.pth".format(self.epoch))
                 saved_files = sorted(list(self.args.exp_path.glob("best_ema_ep*.pth")))
                 if len(saved_files) > self.num_saves:
                     to_deletes = saved_files[: len(saved_files) - self.num_saves]
@@ -135,7 +135,7 @@ class StepTrainerEMA(StepTrainer):
                 flag = "*"
                 improved = self.epoch > self.epochs_to_save or self.args.debug or not self.save_only_improved
 
-            msg = f"Step-EMA[%06d/%06d]" % (self.epoch, self.args.epochs)
+            msg = f"Step-EMA[%08d/%08d]" % (self.epoch, self.args.epochs)
             msg += f" {self.monitor}[" + ";".join([o._get(self.monitor) for o in o_lst]) + "]"
             msg += " (best:%.4f%s)" % (self.best_ema, flag)
 
@@ -166,7 +166,7 @@ class StepTrainerEMA(StepTrainer):
         if self.args.logging.use_wandb:
             loss_reduced = reduce_dict(losses_dict)
             losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
-            self.log_wandb(losses_dict, "valid")
+            self.log_wandb(losses_dict, "valid", epoch=self.epoch)
         
         improved = self.evaluation(o_valid, o_train)
         
@@ -180,7 +180,7 @@ class StepTrainerEMA(StepTrainer):
             if self.args.logging.use_wandb:
                 loss_reduced = reduce_dict(losses_dict)
                 losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in loss_reduced.items()}
-                self.log_wandb(losses_dict, "valid_ema")
+                self.log_wandb(losses_dict, "valid_ema", epoch=self.epoch)
             
             improved = self.evaluation_ema(o_valid_ema, o_train)
             

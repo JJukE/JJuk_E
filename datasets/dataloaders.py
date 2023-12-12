@@ -79,8 +79,8 @@ class SubDataset(Dataset):
         return self.dataset[subidx]
 
 
-def infinite_dataloader(dl, n_iters=inf):
-    step = 0
+def infinite_dataloader(dl, n_iters=inf, initial=0):
+    step = initial
     keep = True
     while keep:
         for batch in dl:
