@@ -59,11 +59,15 @@ class ReduceLROnPlateauWithWarmup(object):
         min_lr (float or list): A scalar or a list of scalars. A
             lower bound on the learning rate of all param groups
             or each group respectively. Default: 0.
+        max_lr (float or list): A scalar or a list of scalars. A
+            start value of the learning rate after linear warmup.
         eps (float): Minimal decay applied to lr. If the difference
             between new and old lr is smaller than eps, the update is
             ignored. Default: 1e-8.
         verbose (bool): If ``True``, prints a message to stdout for
             each update. Default: ``False``.
+        warmup_steps (int): Number of steps for warmup. Starts from
+            initialized values of the optimizers to max_lr.
 
     Example:
         >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
@@ -85,6 +89,7 @@ class ReduceLROnPlateauWithWarmup(object):
         threshold_mode="rel",
         cooldown=0,
         min_lr=1e-8,
+        max_lr=1e-4,
         eps=1e-8,
         verbose=False,
         warmup_steps=1,
@@ -100,11 +105,15 @@ class ReduceLROnPlateauWithWarmup(object):
         self.optimizer = optimizer
 
         if isinstance(min_lr, list) or isinstance(min_lr, tuple):
-            if len(min_lr) != len(optimizer.param_groups):
-                raise ValueError("expected {} min_lrs, got {}".format(len(optimizer.param_groups), len(min_lr)))
+            if (len(min_lr) != len(optimizer.param_groups)) or (len(max_lr) != len(optimizer.param_groups)):
+                raise ValueError("expected {} min_lrs and max_lrs, got {} and {}, respectively.".format(len(optimizer.param_groups), len(min_lr), len(max_lr)))
             self.min_lrs = list(min_lr)
+            self.max_lrs = list(max_lr)
         else:
             self.min_lrs = [min_lr] * len(optimizer.param_groups)
+            self.max_lrs = [max_lr] * len(optimizer.param_groups)
+        
+        self.start_lrs = [group["lr"] for group in self.optimizer.param_groups]
 
         self.patience = patience
         self.verbose = verbose
@@ -127,10 +136,10 @@ class ReduceLROnPlateauWithWarmup(object):
         self.best = self.mode_worse
         self.cooldown_counter = 0
         self.num_bad_epochs = 0
-
+            
     def _warmup_lr(self):
         for i, param_group in enumerate(self.optimizer.param_groups):
-            param_group["lr"] = self.min_lrs[0] * min(1, self.last_epoch)
+            param_group["lr"] += (self.max_lrs[i] - self.start_lrs[i]) / self.warmup_steps
 
     def step(self, metrics, epoch=None):
         # convert `metrics` to float, in case it's a zero-dim Tensor
@@ -141,7 +150,7 @@ class ReduceLROnPlateauWithWarmup(object):
             warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
         self.last_epoch = epoch
 
-        if self.last_epoch < self.warmup_steps:
+        if self.last_epoch <= self.warmup_steps:
             self._warmup_lr()
             return
 
@@ -197,9 +206,9 @@ class ReduceLROnPlateauWithWarmup(object):
             raise ValueError("threshold mode " + threshold_mode + " is unknown!")
 
         if mode == "min":
-            self.mode_worse = torch.finfo(mode.dtype).max
+            self.mode_worse = torch.finfo(torch.float64).max # NOTE: check if the value should be torch.float32
         else:  # mode == 'max':
-            self.mode_worse = -torch.finfo(mode.dtype).max
+            self.mode_worse = -torch.finfo(torch.float64).max # NOTE: check if the value should be torch.float32
 
         self.mode = mode
         self.threshold = threshold

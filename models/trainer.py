@@ -319,8 +319,6 @@ class BaseTrainer(BaseWorker):
             self.optim.zero_grad()
 
             self.step_sched(is_on_batch=True)
-            if self.args.logging.use_wandb:
-                self.log_wandb({"learning_rate": self.optim.param_groups[0]["lr"]}, "train", epoch=self.epoch)
 
             n, g = self.collect_log(s)
             o.update_dict(n, g)
@@ -433,7 +431,7 @@ class BaseTrainer(BaseWorker):
             train_loss_reduced = reduce_dict(train_losses_dict)
             data_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in train_loss_reduced.items()}
             data_dict.update({"learning_rate": self.optim.param_groups[0]["lr"]})
-            self.log_wandb(train_losses_dict, "train", epoch=self.epoch)
+            self.log_wandb(data_dict, "train", epoch=self.epoch)
 
             val_loss_reduced = reduce_dict(val_losses_dict)
             val_losses_dict = {k: v.mean().item() if hasattr(v, "mean") else v for k, v in val_loss_reduced.items()}
