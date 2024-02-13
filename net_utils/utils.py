@@ -77,9 +77,10 @@ def seed_everything(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     if torch.cuda.is_available():
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cudnn.deterministic = False
+        torch.backends.cudnn.benchmark = True # usually False?
+        torch.backends.cudnn.deterministic = False # usually True?
 
 
 def find_free_port():
