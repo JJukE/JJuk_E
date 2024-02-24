@@ -1,3 +1,4 @@
+import os
 import math
 import sys
 from abc import ABCMeta, abstractmethod
@@ -252,6 +253,10 @@ class BaseTrainer(BaseWorker):
             "epoch": self.epoch,
         }
         torch.save(data, str(out_path))
+        
+        file_size = os.path.getsize(str(out_path)) / (1024**3) # GB
+        if file_size >= self.file_size_to_warn: # model and model_ema
+            self.log.warn(f"Saved pth file is {file_size:.2f}GB. It might be too large.")
 
     def step(self, s):
         pass

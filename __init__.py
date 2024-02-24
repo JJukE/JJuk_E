@@ -6,4 +6,4 @@ from .models import trainer, ema_trainer, optimizer, scheduler
 __all__ = ["datasets", "models", "net_utils", "utils",
            "logger", "options", "trainer", "ema_trainer", "optimizer", "scheduler"]
 
-__version__ = "0.0.7.2"
+__version__ = "0.0.7.3"

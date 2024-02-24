@@ -1,3 +1,4 @@
+import os
 import math
 from collections import OrderedDict
 from typing import Union
@@ -58,12 +59,16 @@ class BaseTrainerEMA(BaseTrainer):
     def save(self, out_path):
         data = {
             "optim": self.optim.state_dict(),
-            "model": self.model_src.state_dict(),
             "model_ema": self.model_ema.state_dict(),
             "epoch": self.epoch,
         }
         torch.save(data, str(out_path))
         
+        file_size = os.path.getsize(str(out_path)) / (1024**3) # GB
+        if file_size >= self.file_size_to_warn:
+            self.log.warn(f"Saved pth file is {file_size:.2f}GB. It might be too large.")
+        
+
     @torch.no_grad()
     def evaluation_ema(self, *o_lst):
         # self.step_sched(o_lst[0][self.monitor], is_on_epoch=True)
@@ -200,6 +205,10 @@ class StepTrainerEMA(StepTrainer):
             "epoch": self.epoch,
         }
         torch.save(data, str(out_path))
+        
+        file_size = os.path.getsize(str(out_path)) / (1024**3) # GB
+        if file_size >= self.file_size_to_warn:
+            self.log.warn(f"Saved pth file is {file_size:.2f}GB. It might be too large.")
 
     @torch.no_grad()
     def evaluation_ema(self, *o_lst):
