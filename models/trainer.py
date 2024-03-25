@@ -138,6 +138,7 @@ class BaseTrainer(BaseWorker):
         use_esam: bool = False,  # Efficient Sharpness-aware Minimization
         save_only_improved: bool = True,
         tqdm_ncols: int = 128,
+        file_size_to_warn: float = 10,
     ) -> None:
         assert not (mixed_precision and (use_sam or use_esam))
         # assert not (use_sam and use_esam)
@@ -157,6 +158,7 @@ class BaseTrainer(BaseWorker):
         self.use_esam = use_esam
         self.save_only_improved = save_only_improved
         self.tqdm_ncols = tqdm_ncols
+        self.file_size_to_warn = file_size_to_warn
 
         if self.mixed_precision:
             self.scaler = GradScaler()
