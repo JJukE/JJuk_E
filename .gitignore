@@ -132,9 +132,7 @@ dmypy.json
 .vscode/
 
 # Files to test whether the codes work well
-test.py
-results/
-jjuke/modules/data/
+exp/
 
 # Wandb
 wandb/

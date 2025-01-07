@@ -1,9 +1,8 @@
-from . import datasets, models, net_utils, utils
+from . import model, util
 # from jjuke import *
-from .net_utils import logger, options
-from .models import trainer, ema_trainer, optimizer, scheduler
+from .util import logger, options
+from .model import trainer
 
-__all__ = ["datasets", "models", "net_utils", "utils",
-           "logger", "options", "trainer", "ema_trainer", "optimizer", "scheduler"]
+__all__ = ["model", "util", "logger", "options", "trainer"]
 
-__version__ = "0.0.7.4"
+__version__ = "1.0.0"

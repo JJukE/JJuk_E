@@ -19,7 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-import os
 import argparse
 import importlib
 from copy import deepcopy
@@ -133,20 +132,10 @@ def load_yaml(path):
     return cfg
 
 
-def get_config(argv=None):
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config_file", type=str)
-    parser.add_argument("--gpus", type=str)
-    parser.add_argument("--debug", action="store_true")
-
-    opt, unknown = parser.parse_known_args(argv)
-
-    cfg = load_yaml(opt.config_file)
-    cli = OmegaConf.from_dotlist(unknown)
-    args = OmegaConf.merge(cfg, cli)
-
-    args.gpus = list(map(int, opt.gpus.split(",")))
-    args.debug = opt.debug
+def get_config(config_file, gpus):
+    args = load_yaml(config_file)
+    
+    args.gpus = list(map(int, gpus.split(",")))
 
     n = datetime.now()
     # timestr = "{}{:02d}{:02d}_{:02d}{:02d}{:02d}".format(
@@ -158,22 +147,21 @@ def get_config(argv=None):
     # timestr = "{}{:02d}{:02d}".format(
     #     n.year%100, n.month, n.day
     # )
-    timestr += "_" + Path(opt.config_file).stem
+    timestr += "_" + Path(config_file).stem
     if "memo" in args.keys():
         timestr += "_%s" % args.memo
-    
-    if args.debug:
-        timestr += "_debug"
 
     if "exp_dir" in args.keys():
-        args.exp_path = os.path.join(args["exp_dir"], timestr)
-        (Path(args.exp_path) / "samples").mkdir(parents=True, exist_ok=True)
+        args.exp_path = Path(args["exp_dir"]) / timestr
+        args.exp_path.mkdir(parents=True, exist_ok=True)
+        # (args.exp_path / "samples").mkdir(parents=True, exist_ok=True)
         print("Start on exp_path:", args.exp_path)
 
-        with open(os.path.join(args.exp_path, "args.yaml"), "w") as f:
+        with open(args.exp_path / "args.yaml", "w") as f:
             OmegaConf.save(args, f)
 
-        print(OmegaConf.to_yaml(args, resolve=True))
+        args.exp_path = str(args.exp_path)
+        # print(OmegaConf.to_yaml(args, resolve=True))
         args = OmegaConf.to_container(args, resolve=True)
         args = EasyDict(args)
         args.exp_path = Path(args.exp_path)

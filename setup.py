@@ -2,8 +2,8 @@ from setuptools import find_packages, setup
 
 setup(
     name="jjuke",
-    version="0.0.7.4",
-    description="Framework and utilities for Deep Learning models with Pytorch by JJukE",
+    version="1.0.0",
+    description="Framework for training Deep Learning networks by JJukE",
     author="JJukE",
     author_email="psj9156@gmail.com",
     url="https://github.com/JJukE/JJuk_E.git",
@@ -12,12 +12,13 @@ setup(
     install_requires=[
         "torch",
         "numpy",
-        "pytorch3d",
-        "scikit-image",
+        "accelerate",
+        "transformers",
+        "diffusers",
         "omegaconf",
         "easydict",
         "tqdm",
-        "einops"
+        "wandb"
     ],
     keywords=["JJukE", "jjuke"]
 )

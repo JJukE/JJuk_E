@@ -1,65 +1,108 @@
 import os
-import torch.multiprocessing as mp
+import yaml
+import argparse
+import subprocess
+from pathlib import Path
 
 import torch
-import torch.distributed as dist
+import torch.multiprocessing as mp
 
-from jjuke import logger, options
-from jjuke.net_utils import seed_everything, find_free_port
-from jjuke.net_utils.dist import safe_barrier
+from jjuke import options
 
+"""
+see the documents for settings:
+https://huggingface.co/docs/accelerate/package_reference/cli
 
-def main_worker(rank, args):
-    if args.ddp:
-        dist.init_process_group(backend="nccl", init_method=args.dist_url, world_size=args.world_size, rank=rank)
+Training example
+    python main.py --config_file config/MyModel/MyConfig.yaml --gpus 0,1
+Debugging example
+    python main.py --config_file config/MyModel/MyConfig.yaml --gpus 0,1 --debug
+"""
 
-    args.rank = rank
-    args.rankzero = rank == 0
-    args.gpu = args.gpus[rank]
-    torch.cuda.set_device(args.gpu)
+def find_free_port():
+    import socket
 
-    if args.rankzero:
-        logger.basic_config(args.exp_path / "main.log")
-    else:
-        logger.basic_config(None, lock=True)
-    args.log = logger.get_logger()
-
-    args.seed += rank
-    seed_everything(args.seed)
-
-    if args.ddp:
-        print("main_worker with rank:{} (gpu:{}) is loaded".format(rank, args.gpu))
-    else:
-        print("main_worker with gpu:{} in main thread is loaded".format(args.gpu))
-
-    trainer = options.instantiate_from_config(args.trainer, args)
-    trainer.fit()
-
-    safe_barrier()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Binding to port 0 will cause the OS to find an available port for us
+    sock.bind(("", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    # NOTE: there is still a chance the port could be taken by other processes.
+    return port
 
 
-def main():
-    args = options.get_config()
+def is_rtx_4000(gpus_indices):
+    try:
+        gpu_names = subprocess.check_output(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], encoding="utf-8")
+        gpu_names = [gpu_names.strip().split("\n")[i] for i in gpus_indices]
+        for name in gpu_names:
+            if "RTX 40" in name:
+                return True
+        return False
+    except FileNotFoundError:
+        print("nvidia-smi not found. Ensure NVIDIA drivers are installed.")
+        return False
 
-    os.environ["OMP_NUM_THREADS"] = str(min(args.dataset.params.num_workers, mp.cpu_count()))
 
-    args.world_size = len(args.gpus)
-    args.ddp = args.world_size > 1
-    port = find_free_port()
-    args.dist_url = "tcp://127.0.0.1:{}".format(port)
-
-    if args.ddp:
-        pc = mp.spawn(main_worker, nprocs=args.world_size, args=(args,), join=False)
-        pids = " ".join(map(str, pc.pids()))
-        print("\33[101mProcess Ids:", pids, "\33[0m")
-        try:
-            pc.join()
-        except KeyboardInterrupt:
-            print("\33[101mkill {:s}\33[0m".format(pids))
-            os.system("kill {:s}".format(pids))
-    else:
-        main_worker(0, args)
+def format_args(config):
+    assert isinstance(config, dict)
+    args = []
+    for k, v in config.items():
+        if isinstance(v, bool):
+            if v:
+                args.append(f"--{k}")
+        elif isinstance(v, list):
+            args.append(f"--{k} " + " ".join(map(str, v)))
+        elif v is not None:
+            args.append(f"--{k} {v}")
+    return " ".join(args)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_file", type=str)
+    parser.add_argument("--gpus", type=str)
+    parser.add_argument("--debug", action="store_true")
+    
+    opt = parser.parse_args()
+    
+    # DDP setting
+    args = options.get_config(opt.config_file, opt.gpus, opt.debug)
+    
+    if is_rtx_4000(args.gpus):
+        os.environ["NCCL_P2P_DISABLE"] = "1"
+        os.environ["NCCL_IB_DISABLE"] = "1"
+    
+    if len(args.gpus) > 1:
+        print(f"multi gpu training with {opt.gpus}th gpus...")
+        accel_configs = {
+            "multi_gpu": True,
+            "num_machines": 1, # TODO: if you want to train multiple machines, implement it.
+            "num_processes": len(args.gpus),
+            "num_cpu_threads_per_process": min(args.dataset.params.num_workers, mp.cpu_count()),
+            "main_process_port": find_free_port(),
+            "gpu_ids": opt.gpus
+        }
+    else:
+        print(f"single gpu training with {opt.gpus}th gpu...")
+        accel_configs = {
+            "multi_gpu": False,
+            "num_machines": 1,
+            "num_processes": 1,
+            "num_cpu_threads_per_process": min(args.dataset.params.num_workers, mp.cpu_count()),
+            "main_process_port": find_free_port(),
+        }
+    
+    with open(Path(args.exp_path) / "accelerate_config.yaml", "w") as f:
+        yaml.dump(accel_configs, f, sort_keys=False)
+    
+    script_configs = {
+        "config_file": opt.config_file,
+        "gpus": opt.gpus,
+    }
+    
+    if opt.debug:
+        script_configs.update({"debug": opt.debug})
+    
+    train_cmd = f"accelerate launch {format_args(accel_configs)} train.py {format_args(script_configs)}"
+    os.system(train_cmd)

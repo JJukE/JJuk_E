@@ -1,0 +1,97 @@
+exp_dir: "/root/dev/Example/MyModel/exp"
+train_epochs: &train_epochs 1000 # train_epochs for epoch training, train_steps for step training
+seed: 0
+memo: # optional
+
+logging:
+  # don't use both use_wandb and push_to_hub for preserving security issues
+  use_wandb: True
+  project_name: # project name displayed on wandb
+
+  push_to_hub: False
+
+accel:
+  # dl_cfg:
+  #   target: accelerate.utils.DataLoaderConfiguration
+  #   params:
+  #     split_batches: False
+  #     even_batches: False
+  # deepspeed:
+  #   target: accelerate.utils.DeepSpeedPlugin
+  #   params:
+  ddp_kwargs:
+    target: accelerate.utils.DistributedDataParallelKwargs
+    params:
+      find_unused_parameters: False
+
+diffusion:
+  denoiser:
+    target: model.decoder.MyDecoder # "MyDecoder" class in "model/decoder.py"
+    params:
+      ...
+  scheduler:
+    target: model.diffusions.sde.VPSDE # "VPSDE" class in "model/diffusions/sde.py"
+    params:
+      ...
+
+preprocessor:
+  target: model.diffusion_trainer.Preprocessor # Overrided Preprocessor class
+
+trainer:
+  target: model.diffusion_trainer.Trainer # Overrided Trainer class
+  params:
+    # base trainer configuration
+    num_saves: Null # save only latest `num_saves` ckpts (no limit: Null)
+    save_period: 100 #
+    valid_period: 100 #
+    mixed_precision: no # ["no", "fp16", "bf16"]
+    clip_grad: 1. #
+    # dataloader_config:
+    #   target: accelerate.utils.DataLoaderConfiguration
+    #   params:
+    #     split_batches: False
+    #     even_batches: False
+    # deepspeed_plugin: Null
+
+    # configuration of overridden Trainer (weight for each loss, visualization settings, etc.)
+    ...
+
+    # network configuration
+    use_ema: True #
+    enable_mem_eff_att: False #
+    gradient_checkpointing: False #
+    allow_tf32: False # only for faster training on Ampere GPUs
+    scale_lr: False #
+  
+  ema:
+    target: diffusers.training_utils.EMAModel
+    params:
+      decay: 0.9999 #
+      min_decay: 0. #
+      update_after_step: 0 #
+      use_ema_warmup: False #
+    
+    offload: False # whether to load the EMA model on cpu
+
+# should be customized
+dataset:
+  target: dataset.dataloader.load_dataloaders
+  params:
+    batch_size: 128 #
+    num_workers: 4 #
+    ...
+
+# https://huggingface.co/docs/transformers/main_classes/optimizer_schedules
+optim:
+  target: model.optim.Adam
+  params:
+    lr: 1.0e-4 #
+    weight_decay: 0.02 #
+
+# https://github.com/huggingface/diffusers/blob/main/src/diffusers/optimization.py
+sched:
+  target: diffusers.optimization.get_scheduler
+  params:
+    name: # ["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup", "piecewise_constant"]
+    num_warmup_steps: 10 #
+    ...
