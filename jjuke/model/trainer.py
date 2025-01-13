@@ -61,16 +61,13 @@ class BasePreprocessor(metaclass=ABCMeta):
     @abstractmethod
     def __call__(self, batch, augmentation=False):
         # b = EasyDict(log={})
-        
         # b.motion = self._to(batch["motion"]) # (B, N, D)
         # b.motion = normalizer.normalize(b.motion) # NOTE
         # b.music = self._to(batch["music"]) # (B, N, d)
         # b.genre = batch["genre"]
         # b.wav = batch["wav"]
-        
         # if augmentation:
         #     pass
-
         # return b
         pass
 
