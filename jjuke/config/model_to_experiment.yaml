@@ -24,15 +24,32 @@ accel:
     params:
       find_unused_parameters: False
 
+model:
+  target: model.decoder.MyDecoder # "MyDecoder" class in "model/decoder.py"
+  params:
+    ...
+
 diffusion:
-  denoiser:
-    target: model.decoder.MyDecoder # "MyDecoder" class in "model/decoder.py"
+  trainer:
+    target: model.diffusions.ddpm.DDPMTrainer # "DDPMTrainer" class in "model/diffusions/ddpm.py"
     params:
-      ...
-  scheduler:
-    target: model.diffusions.sde.VPSDE # "VPSDE" class in "model/diffusions/sde.py"
+      num_train_timesteps: 1000
+      beta_schedule: &beta_schedule squaredcos_cap_v2 # linear
+      prediction_type: &prediction_type sample
+      loss_type: &loss_type l2
+      p2_loss_weight_gamma: 0. # don't use
+      p2_loss_weight_k: 1.
+      clip_sample: &clip_sample True
+      cfg_weight: &cfg_weight 2
+  sampler:
+    target: model.diffusions.ddim.DDIMSampler # "DDIMTrainer" class in "model/diffusions/ddim.py"
     params:
-      ...
+      num_inference_steps: 200
+      beta_schedule: *beta_schedule
+      prediction_type: *prediction_type
+      loss_type: *loss_type
+      clip_sample: *clip_sample
+      cfg_weight: *cfg_weight
 
 preprocessor:
   target: model.diffusion_trainer.Preprocessor # Overrided Preprocessor class
@@ -77,13 +94,13 @@ trainer:
 dataset:
   target: dataset.dataloader.load_dataloaders
   params:
-    batch_size: 128 #
+    batch_size: 128 # batch size per GPU
     num_workers: 4 #
     ...
 
 # https://huggingface.co/docs/transformers/main_classes/optimizer_schedules
 optim:
-  target: model.optim.Adam
+  target: torch.optim.Adam
   params:
     lr: 1.0e-4 #
     weight_decay: 0.02 #
@@ -92,6 +109,7 @@ optim:
 sched:
   target: diffusers.optimization.get_scheduler
   params:
-    name: # ["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup", "piecewise_constant"]
-    num_warmup_steps: 10 #
-    ...
+    name: "constant_with_warmup" # ["linear", "cosine_with_restarts", "polynomial", "constant_with_warmup"] # linear, polynomial -> with warmup as default
+    num_warmup_steps: 10 # 0 if don't need warmup
+    num_training_steps: *train_epochs
+    # num_cycles: 100 # number of hard restarts
