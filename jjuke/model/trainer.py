@@ -20,7 +20,7 @@ from accelerate.utils import (set_seed, ProjectConfiguration, DataLoaderConfigur
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 
-from ..util import instantiate_from_config, logger
+from jjuke.util import instantiate_from_config, logger
 
 diffusers.utils.check_min_version("0.26.0.dev0") # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 
@@ -84,7 +84,6 @@ class BaseTrainer(metaclass=ABCMeta):
         valid_period: int = 50000,
         mixed_precision: str = "no",
         clip_grad: float = 0.,
-        monitor: str = "loss",
         **kwargs
     ) -> None:
         self.args = args
@@ -98,7 +97,6 @@ class BaseTrainer(metaclass=ABCMeta):
         assert mixed_precision in ["no", "fp16", "bf16"] # , "fp8"]
         self.mixed_precision = mixed_precision
         self.clip_grad = clip_grad
-        self.monitor = monitor
         
         self.build_accelerator()
         
@@ -192,6 +190,7 @@ class BaseTrainer(metaclass=ABCMeta):
         # self.scheduler: SDE = instantiate_from_config(self.args.diffusion.scheduler)
         # self.score_model = ScoreModel(self.model, pred="x0_pred", sde=self.scheduler, guidance_weight=self.guidance_weight)
         
+        # self.smpl_model: Union[SMPLSkeleton, SMPLX_Skeleton] = instantiate_from_config(self.args.smpl_model, self.device)
         # self.log.info("Model Params: %.2fM" % (self.model_params / 1e6))
         
         # self.optim = instantiate_from_config(self.args.optim, self.model.parameters())
@@ -285,6 +284,22 @@ class BaseTrainer(metaclass=ABCMeta):
     def build_preprocessor(self):
         self.preprocessor: BasePreprocessor = instantiate_from_config(self.args.preprocessor, device=self.device)
     
+    @abstractmethod
+    def prepare_objects(self):
+        # # not prepare dl_valid
+        # self.model, self.ddpm_trainer, self.ddpm_sampler, self.optim, self.dl_train, self.sched = self.accel.prepare(
+        #     self.model, self.ddpm_trainer, self.ddpm_sampler, self.optim, self.dl_train, self.sched
+        # )
+        # # prepare dl_valid as well
+        # self.model, self.ddpm_trainer, self.ddpm_sampler, self.optim, self.dl_train, self.dl_valid, self.sched = self.accel.prepare(
+        #     self.model, self.ddpm_trainer, self.ddpm_sampler, self.optim, self.dl_train, self.dl_valid, self.sched
+        # )
+        pass
+    
+    def set_modules(self, weight_dtype):
+        self.model.to(self.device, dtype=weight_dtype)
+        self.log.info(f"Model Params: {(self.model_params / 1.0e6):.2f}M")
+    
     def prepare_accelerator(self):
         # scheduler and training steps
         warmup_steps_for_sched = self.args.sched.params.num_warmup_steps * self.accel.num_processes
@@ -297,11 +312,17 @@ class BaseTrainer(metaclass=ABCMeta):
             self.total_steps = self.args.train_steps
             train_steps_for_sched = self.total_steps * self.accel.num_processes
         
-        self.sched: get_scheduler = instantiate_from_config(self.args.sched, optimizer=self.optim)
+        if self.accel.num_processes > 1:
+            self.sched = get_scheduler(
+                self.args.sched.params.name,
+                self.optim,
+                num_warmup_steps=warmup_steps_for_sched,
+                num_training_steps=train_steps_for_sched,
+            )
+        else:
+            self.sched: get_scheduler = instantiate_from_config(self.args.sched, optimizer=self.optim)
         
-        self.model, self.optim, self.dl_train, self.sched = self.accel.prepare(
-            self.model, self.optim, self.dl_train, self.sched
-        )
+        self.prepare_objects()
         
         if self.use_ema:
             if self.args.trainer.ema.offload:
@@ -315,8 +336,7 @@ class BaseTrainer(metaclass=ABCMeta):
             weight_dtype = torch.float16
         elif self.accel.mixed_precision == "bf16":
             weight_dtype = torch.bfloat16
-        
-        self.model.to(self.device, dtype=weight_dtype)
+        self.set_modules(weight_dtype)
         
         # recalculate training steps and epochs as the size of the training dataloader may have changed
         self.steps_per_epoch = len(self.dl_train)
@@ -379,6 +399,13 @@ class BaseTrainer(metaclass=ABCMeta):
         for loss_name, loss in losses_dict.items():
             total_loss += loss # NOTE: all losses should be meant
         return total_loss
+    
+    def gather_loss(self, batch_size, losses_dict):
+        """ Gather the losses across all processes for logging. """
+        out_dict = {}
+        for loss_name, loss in losses_dict.items():
+            out_dict[loss_name] = self.accel.gather(loss.repeat(batch_size)).mean()
+        return out_dict
     
     def log_loss(self, data_dict, phase):
         """ Log losses and messages during training or validation. """
@@ -481,18 +508,16 @@ class BaseTrainer(metaclass=ABCMeta):
         #     motion, music, genre, wav = batch.motion, batch.music, batch.genre, batch.wav
         #     B = motion.shape[0]
             
-        #     t, noise, xt = self.score_model.sde.sample(motion)
-        #     t, noise, xt = t.to(motion.dtype), noise.to(motion.dtype), xt.to(motion.dtype)
-            
-        #     target = motion
-        #     pred = self.score_model.x0_pred(xt, t, c=music)
-            
-        #     # calculate losses
-        #     losses_dict = smpl_loss(
-        #         self.loss_type, pred, target, t, normalizer=self.normalizer,
-        #         recon_loss_weight=self.recon_loss_weight, vel_loss_weight=self.vel_loss_weight,
-        #         fk_loss_weight=self.fk_loss_weight, foot_loss_weight=self.foot_loss_weight
-        #     )
+        #     kwargs = {
+        #         "smpl_model": self.smpl_model,
+        #         "normalizer": self.normalizer if isinstance(self.smpl_model, SMPLX_Skeleton) else None,
+        #         "p2_loss_weight": None,
+        #         "recon_loss_weight": self.recon_loss_weight,
+        #         "vel_loss_weight": self.vel_loss_weight,
+        #         "fk_loss_weight": self.fk_loss_weight,
+        #         "foot_loss_weight": self.foot_loss_weight,
+        #     }
+        #     losses_dict = self.ddpm_trainer(self.model, motion, c=music, **kwargs)
         #     train_loss = self.get_total_loss(losses_dict)
             
         #     # backpropagation
@@ -515,6 +540,7 @@ class BaseTrainer(metaclass=ABCMeta):
         #         self.ema_model.step(self.model.parameters())
         #         if self.args.trainer.ema.offload:
         #             self.ema_model.to(device="cpu", non_blocking=True)
+        #     self.global_step += 1
         
         # self.sched.step() # NOTE: Discriminate if this scehduler is either step-based, epoch-based, or validation metric-based
         # self.pbar.update(1)
@@ -531,20 +557,18 @@ class BaseTrainer(metaclass=ABCMeta):
         # self.model.train()
         # batch = self.preprocessor(batch, self.normalizer, augmentation=True)
         # motion, music, genre, wav = batch.motion, batch.music, batch.genre, batch.wav
+        # B = motion.shape[0]
         
-        # t, noise, xt = self.score_model.sde.sample(motion)
-        # t, noise, xt = t.to(motion.dtype), noise.to(motion.dtype), xt.to(motion.dtype)
-        
-        # target = motion
-        # pred = self.score_model.x0_pred(xt, t, c=music)
-        
-        # # calculate losses
-        # losses_dict = smpl_loss(
-        #     self.loss_type, pred, target, t, normalizer=self.normalizer,
-        #     recon_loss_weight=self.recon_loss_weight, vel_loss_weight=self.vel_loss_weight,
-        #     fk_loss_weight=self.fk_loss_weight, foot_loss_weight=self.foot_loss_weight
-        # )
-        
+        # kwargs = {
+        #     "smpl_model": self.smpl_model,
+        #     "normalizer": self.normalizer if isinstance(self.smpl_model, SMPLX_Skeleton) else None,
+        #     "p2_loss_weight": None,
+        #     "recon_loss_weight": self.recon_loss_weight,
+        #     "vel_loss_weight": self.vel_loss_weight,
+        #     "fk_loss_weight": self.fk_loss_weight,
+        #     "foot_loss_weight": self.foot_loss_weight,
+        # }
+        # losses_dict = self.ddpm_trainer(self.model, motion, c=music, **kwargs)
         # train_loss = self.get_total_loss(losses_dict)
         
         # # backpropagation
@@ -574,51 +598,45 @@ class BaseTrainer(metaclass=ABCMeta):
 
     @torch.no_grad()
     def valid_step(self):
+        # # TODO: self.dl_valid should be also prepared for validation with multi gpus in some cases.
         # self.model.eval()
+        # pbar = tqdm(range(0, len(self.dl_valid)), ncols=128, desc="Valid", disable=not self.accel.is_local_main_process)
+        # if self.use_ema:
+        #     # store the model params temporarily and load the EMA params to perform inference
+        #     self.ema_model.store(self.model.parameters())
+        #     self.ema_model.copy_to(self.model.parameters())
+        
+        # avg_valid_loss = 0.
+        # avg_recon_loss, avg_vel_loss, avg_fk_loss, avg_foot_loss = 0., 0., 0., 0.
+        # for step, batch in enumerate(self.dl_valid):
+        #     batch = self.preprocessor(batch, self.normalizer, augmentation=False)
+        #     motion, music, genre, wav = batch.motion, batch.music, batch.genre, batch.wav
+        #     B = motion.shape[0]
+            
+        #     # DDPM
+        #     kwargs = {
+        #         "smpl_model": self.smpl_model,
+        #         "normalizer": self.normalizer if isinstance(self.smpl_model, SMPLX_Skeleton) else None,
+        #         "p2_loss_weight": None,
+        #         "recon_loss_weight": self.recon_loss_weight,
+        #         "vel_loss_weight": self.vel_loss_weight,
+        #         "fk_loss_weight": self.fk_loss_weight,
+        #         "foot_loss_weight": self.foot_loss_weight,
+        #     }
+        #     samples, losses_dict = self.ddpm_sampler(self.model, motion.shape, target=motion, c=music, **kwargs)
+            
+        #     # gather loss
+        #     losses_dict = self.gather_loss(B, losses_dict) # NOTE: gather is necessary for validation for multiple gpus
+        #     avg_recon_loss += losses_dict["recon_loss"].detach().cpu().numpy()
+        #     avg_vel_loss += losses_dict["vel_loss"].detach().cpu().numpy()
+        #     avg_fk_loss += losses_dict["fk_loss"].detach().cpu().numpy()
+        #     avg_foot_loss += losses_dict["foot_loss"].detach().cpu().numpy()
+        #     avg_valid_loss += (self.get_total_loss(losses_dict)).detach().cpu().numpy()
+            
+        #     pbar.update(1)
+        #     pbar.set_postfix(**{"valid_loss": avg_valid_loss})
+        
         # if self.accel.is_main_process:
-        #     desc = "Valid"
-        #     if self.use_ema:
-        #         # store the model params temporarily and load the EMA params to perform inference
-        #         self.ema_model.store(self.model.parameters())
-        #         self.ema_model.copy_to(self.model.parameters())
-            
-        #     avg_valid_loss = 0.
-        #     avg_recon_loss, avg_vel_loss, avg_fk_loss, avg_foot_loss = 0., 0., 0., 0.
-        #     for step, batch in enumerate(tqdm(self.dl_valid, ncols=128, desc=desc, disable=not self.accel.is_local_main_process)):
-        #         batch = self.preprocessor(batch, self.normalizer, augmentation=False)
-        #         motion, music, genre, wav = batch.motion, batch.music, batch.genre, batch.wav
-        #         B = motion.shape[0] # n_samples -> B
-        #         t, noise, _ = self.score_model.sde.sample(motion)
-        #         t, noise = t.to(motion.dtype), noise.to(motion.dtype)
-                
-        #         num_timesteps = 200
-                
-        #         # # DDIM
-        #         # samples = denoise(self.score_model, self.score_model.sde, noise, num_timesteps, cond=music) #, do_cfg=False, num_aug_cfg=2, cfg_weight=self.guidance_weight)
-                
-        #         # DPM Solver
-        #         noise_schedule = NoiseScheduleVP(schedule="linear")
-        #         kwargs = dict(c=music) # conditioning
-        #         model_fn = model_wrapper(self.score_model.x0_pred, noise_schedule, time_input_type="0", model_kwargs=kwargs)
-        #         dpm_solver = DPM_Solver(model_fn, noise_schedule)
-        #         samples = dpm_solver.sample(noise, steps=num_timesteps, eps=1e-4, adaptive_step_size=False, fast_version=True)
-        #         # samples = self.accel.gather(samples.contiguous())
-                
-        #         # calculate losses
-        #         losses_dict = smpl_loss(
-        #             self.loss_type, self.smpl_model, samples, motion, t,
-        #             normalizer=self.normalizer if isinstance(self.smpl_model, SMPLX_Skeleton) else None,
-        #             recon_loss_weight=self.recon_loss_weight, vel_loss_weight=self.vel_loss_weight,
-        #             fk_loss_weight=self.fk_loss_weight, foot_loss_weight=self.foot_loss_weight
-        #         )
-                
-        #         # gather loss
-        #         avg_recon_loss += losses_dict["recon_loss"].detach().cpu().numpy() / B
-        #         avg_vel_loss += losses_dict["vel_loss"].detach().cpu().numpy() / B
-        #         avg_fk_loss += losses_dict["fk_loss"].detach().cpu().numpy() / B
-        #         avg_foot_loss += losses_dict["foot_loss"].detach().cpu().numpy() / B
-        #         avg_valid_loss += (self.get_total_loss(losses_dict)).detach().cpu().numpy() / B
-            
         #     # log loss
         #     val_losses_dict = {
         #         "valid_loss": avg_valid_loss.item(),
@@ -628,10 +646,6 @@ class BaseTrainer(metaclass=ABCMeta):
         #         "foot_loss": avg_foot_loss.item(),
         #     }
         #     self.log_loss(val_losses_dict, "valid")
-            
-        #     if self.use_ema:
-        #         # switch back to the original model params
-        #         self.ema_model.restore(self.model.parameters())
         pass
     
     def save_pipeline(self):
