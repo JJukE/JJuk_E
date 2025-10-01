@@ -18,7 +18,8 @@ setup(
         "omegaconf",
         "easydict",
         "tqdm",
-        "wandb"
+        "wandb",
+        "rich",
     ],
     keywords=["JJukE", "jjuke"]
 )
