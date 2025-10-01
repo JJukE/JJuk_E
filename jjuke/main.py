@@ -1,10 +1,7 @@
 import os
-import yaml
 import argparse
 import subprocess
-from pathlib import Path
 
-import torch
 import torch.multiprocessing as mp
 
 from jjuke import options
@@ -13,10 +10,10 @@ from jjuke import options
 see the documents for settings:
 https://huggingface.co/docs/accelerate/package_reference/cli
 
-Training example
-    python main.py --config_file config/MyModel/MyConfig.yaml --gpus 0,1
-Debugging example
-    python main.py --config_file config/MyModel/MyConfig.yaml --gpus 0,1 --debug
+Before the first time to execute this command, you should configure with `accelerate config` to use no distributed, 1 gpu as default.
+
+EX)
+python main.py --config_file config/MyModel/MyConfig.yaml --gpus 0,1
 """
 
 def find_free_port():
@@ -67,14 +64,17 @@ if __name__ == "__main__":
     opt = parser.parse_args()
     
     # DDP setting
-    args = options.get_config(opt.config_file, opt.gpus, opt.debug)
+    args, yaml_path = options.get_config(opt.config_file, opt.gpus, opt.debug, save=True)
     
-    if is_rtx_4000(args.gpus):
-        os.environ["NCCL_P2P_DISABLE"] = "1"
-        os.environ["NCCL_IB_DISABLE"] = "1"
+    # if is_rtx_4000(args.gpus):
+    #     os.environ["NCCL_P2P_DISABLE"] = "1"
+    #     os.environ["NCCL_IB_DISABLE"] = "1"
+    
+    # NOTE: if nccl backend has an issue (infinitely waiting, etc.), try these:
+    # os.environ["NCCL_P2P_DISABLE"] = "1"
     
     if len(args.gpus) > 1:
-        print(f"multi gpu training with {opt.gpus}th gpus...")
+        print(f"Multi gpu training with {opt.gpus}th gpus...")
         accel_configs = {
             "multi_gpu": True,
             "num_machines": 1, # TODO: if you want to train multiple machines, implement it.
@@ -84,7 +84,8 @@ if __name__ == "__main__":
             "gpu_ids": opt.gpus
         }
     else:
-        print(f"single gpu training with {opt.gpus}th gpu...")
+        # NOTE: check if accelerate use `No distributed training` as default.
+        print(f"Single gpu training with {opt.gpus}th gpu...")
         accel_configs = {
             "multi_gpu": False,
             "num_machines": 1,
@@ -93,16 +94,19 @@ if __name__ == "__main__":
             "main_process_port": find_free_port(),
         }
     
-    with open(Path(args.exp_path) / "accelerate_config.yaml", "w") as f:
-        yaml.dump(accel_configs, f, sort_keys=False)
+    # with open(Path(args.exp_path) / "accelerate_config.yaml", "w") as f:
+    #     yaml.dump(accel_configs, f, sort_keys=False)
     
-    script_configs = {
-        "config_file": opt.config_file,
-        "gpus": opt.gpus,
-    }
+    script_configs = {"args_file": yaml_path}
     
-    if opt.debug:
-        script_configs.update({"debug": opt.debug})
+    train_cmd = ["accelerate", "launch"] \
+        + format_args(accel_configs).split() \
+        + ["train.py"] \
+        + format_args(script_configs).split()
     
-    train_cmd = f"accelerate launch {format_args(accel_configs)} train.py {format_args(script_configs)}"
-    os.system(train_cmd)
+    try:
+        result = subprocess.run(train_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"\33[101mError occured (exit {e.returncode})\33[0m")
+    except KeyboardInterrupt:
+        print("\33[101mkill \33[0m")

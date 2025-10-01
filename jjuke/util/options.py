@@ -132,10 +132,12 @@ def load_yaml(path):
     return cfg
 
 
-def get_config(config_file, gpus):
+def get_config(config_file, gpus, debug=False, save=False):
     args = load_yaml(config_file)
     
     args.gpus = list(map(int, gpus.split(",")))
+    if debug:
+        args.debug = True
 
     n = datetime.now()
     # timestr = "{}{:02d}{:02d}_{:02d}{:02d}{:02d}".format(
@@ -150,24 +152,27 @@ def get_config(config_file, gpus):
     timestr += "_" + Path(config_file).stem
     if "memo" in args.keys():
         timestr += "_%s" % args.memo
+    
+    if debug:
+       timestr += "_debug"
 
     if "exp_dir" in args.keys():
-        args.exp_path = Path(args["exp_dir"]) / timestr
-        args.exp_path.mkdir(parents=True, exist_ok=True)
+        args.exp_path = str(Path(args["exp_dir"]) / timestr)
+        if save:
+            Path(args.exp_path).mkdir(parents=True, exist_ok=True)
         # (args.exp_path / "samples").mkdir(parents=True, exist_ok=True)
         print("Start on exp_path:", args.exp_path)
 
-        with open(args.exp_path / "args.yaml", "w") as f:
-            OmegaConf.save(args, f)
+        if save:
+            with open(Path(args.exp_path) / "args.yaml", "w") as f:
+                OmegaConf.save(args, f)
 
-        args.exp_path = str(args.exp_path)
         # print(OmegaConf.to_yaml(args, resolve=True))
         args = OmegaConf.to_container(args, resolve=True)
         args = EasyDict(args)
-        args.exp_path = Path(args.exp_path)
     else:
         print("There's no any experiment directory in the config file.")
 
     args = _postprocess_yaml_recursive(args)
 
-    return args
+    return args, str(Path(args.exp_path) / "args.yaml")

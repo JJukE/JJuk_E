@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="jjuke",
-    version="1.0.0",
+    version="1.1.1",
     description="Framework for training Deep Learning networks by JJukE",
     author="JJukE",
     author_email="psj9156@gmail.com",
