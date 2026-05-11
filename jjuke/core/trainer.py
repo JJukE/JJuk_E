@@ -289,7 +289,7 @@ class BaseTrainer(metaclass=ABCMeta):
         
         if scale_lr:
             self.args.optim.params.lr = (
-                self.args.optim.params.lr * self.grad_acc_steps * self.args.dataset.batch_size * self.accelerator.num_processes
+                self.args.optim.params.lr * self.grad_acc_steps * self.args.environment.batch_size * self.accelerator.num_processes
             )
     
     # @abstractmethod
@@ -324,7 +324,7 @@ class BaseTrainer(metaclass=ABCMeta):
     #     self.accel.register_load_state_pre_hook(load_model_hook)
     
     def build_dataset(self):
-        dataloaders: Sequence[Dataset] = instantiate_from_config(self.args.dataset)
+        dataloaders: Sequence[Dataset] = instantiate_from_config(self.args.environment)
         if len(dataloaders) == 3:
             self.dl_train, self.dl_valid, self.dl_test = dataloaders
             l1, l2, l3 = len(self.dl_train.dataset), len(self.dl_valid.dataset), len(self.dl_test.dataset)
@@ -546,7 +546,7 @@ class BaseTrainer(metaclass=ABCMeta):
     # Training
     #============================================================
     def prepare_train(self):
-        total_batch_size = self.args.dataset.params.batch_size * self.accel.num_processes * self.grad_acc_steps
+        total_batch_size = self.args.environment.params.batch_size * self.accel.num_processes * self.grad_acc_steps
         if hasattr(self.args, "debug"):
             if self.accel.is_main_process:
                 self.log.info("*********************** Running training (Debugging Mode) ***********************")
@@ -555,7 +555,7 @@ class BaseTrainer(metaclass=ABCMeta):
                     self.log.info(f"*  Num total epochs: {self.total_epochs}")
                 else: # StepTrainer
                     self.log.info(f"*  Num total steps: {self.total_steps}")
-                self.log.info(f"*  Instantaneous batch size per device: {self.args.dataset.params.batch_size}")
+                self.log.info(f"*  Instantaneous batch size per device: {self.args.environment.params.batch_size}")
                 if self.grad_acc_steps > 1:
                     self.log.info(f"*  Total train batch size (w/ parallel, distributed & accumulation): {total_batch_size}")
                     self.log.info(f"*  Gradient Accumulation steps = {self.grad_acc_steps}")
@@ -571,7 +571,7 @@ class BaseTrainer(metaclass=ABCMeta):
                     self.log.info(f"*  Num total epochs: {self.total_epochs}")
                 else: # StepTrainer
                     self.log.info(f"*  Num total steps: {self.total_steps}")
-                self.log.info(f"*  Instantaneous batch size per device: {self.args.dataset.params.batch_size}")
+                self.log.info(f"*  Instantaneous batch size per device: {self.args.environment.params.batch_size}")
                 if self.grad_acc_steps > 1:
                     self.log.info(f"*  Total train batch size (w/ parallel, distributed & accumulation): {total_batch_size}")
                     self.log.info(f"*  Gradient Accumulation steps = {self.grad_acc_steps}")

@@ -1,0 +1,105 @@
+# RL experiment schema template for jjuke.
+#
+# Mirrors `jjuke/dl/config/exp_dl.yaml` but with env-driven (RL) blocks.
+# A reference working consumer (Isaac Sim Lab + InterMimic Teacher PPO)
+# lives at `isaaclab/config/teacher/omomo.yaml`.
+#
+# Cfg is loaded by `jjuke.options.get_config(...)` (resolves `__parent__`,
+# expands `__pycall__` / `__pyobj__` markers, timestamps `exp_path`).
+# The RL launcher `jjuke.rl.main` reads it and dispatches in-process to
+# `jjuke.rl.train.train(args_file=..., headless=...)`.
+
+exp_dir: "/root/dev/Example/MyRL/exp"
+train_epochs: 100000           # RL "epochs" = PPO iterations (rollout + update)
+seed: 0
+memo:                          # optional — appended to the wandb run name
+
+logging:
+  # wandb run name is auto-derived from exp_path stem (jjuke convention).
+  use_wandb: True
+  project_name:                # wandb project (e.g. "MyEnv")
+  push_to_hub: False           # don't use both push_to_hub and use_wandb
+
+accel:
+  ddp_kwargs:
+    target: accelerate.utils.DistributedDataParallelKwargs
+    params:
+      find_unused_parameters: False
+
+# Env factory — replaces the DL `dataset:` (DataLoader factory) block.
+# The target callable returns a single env instance; `RLBaseTrainer`
+# unwraps and stashes it on `self.env`.
+#
+# `BaseTrainer.prepare_train` reads `dataset.params.batch_size` for a
+# cosmetic log line. Consumers that subclass `jjuke.rl.BaseRLTrainer`
+# get this populated automatically (override sets it to
+# `num_envs * horizon_length`); consumers that roll their own RL
+# trainer outside that hierarchy should set `batch_size` here.
+dataset:
+  target: env.env_factory.load_env   # custom env factory
+  params:
+    env_target: env.my_env.MyEnv
+    env_cfg_target: env.config.my_env_cfg.MY_ENV_CFG
+    # Reducing `num_envs` to fit GPU memory? Scale `trainer.params.minibatch_size`
+    # by the same factor — PPO update dynamics are sensitive to the per-env
+    # minibatch size (`minibatch_size / num_envs`), and changing it without
+    # retuning typically hurts the policy.
+    num_envs: 4096
+    num_workers: 0
+    ...                        # any env-specific kwargs (motion files, etc.)
+
+# Optional: explicit policy network (the trainer's `_build_policy` reads
+# this if present; otherwise falls back to the trainer's default).
+network:
+  target: model.network.ActorCritic   # or jjuke.rl.policies.BasePolicy subclass
+  params:
+    units: [1024, 1024, 512]   # actor-critic MLP hidden sizes
+    log_sigma_init: -2.9       # log_sigma init for fixed-sigma Gaussian policy
+
+# Trainer — typically a `jjuke.rl.BaseRLTrainer` subclass (PPO / DAgger /
+# whatever). PPO knobs shown below; subclasses pick what they consume.
+trainer:
+  target: model.ppo_trainer.PPOTrainer   # custom RL trainer
+  params:
+    # BaseTrainer kwargs.
+    num_saves: Null            # save only latest `num_saves` ckpts (no limit: Null)
+    save_period: 500
+    valid_period: 500
+    mixed_precision: "no"      # ["no", "fp16", "bf16"]
+    clip_grad: 1.0
+    grad_acc_steps: 1
+
+    # PPO knobs (standard).
+    gamma: 0.99
+    tau: 0.95                  # GAE λ
+    e_clip: 0.2
+    mini_epochs: 6
+    horizon_length: 32         # env steps per rollout
+    minibatch_size: 16384      # PPO update minibatch
+    critic_coef: 5.0
+    bounds_loss_coef: 10.0
+    entropy_coef: 0.0
+    clip_value: false
+
+    # RL base — env wrap + obs normalization.
+    clip_actions: 1.0
+    normalize_input: true
+    normalize_advantage: true
+
+    # Network defaults (used only if `network:` cfg block is absent).
+    actor_units: [1024, 1024, 512]
+    log_sigma_init: -2.9
+
+# Optimizer — wired into `RLBaseTrainer.build_network` via
+# `instantiate_from_config(args.optim, model.parameters())`.
+optim:
+  target: torch.optim.Adam
+  params:
+    lr: 2.0e-5
+    weight_decay: 0.0
+
+# Optional resume: set this to a `checkpoint-N/` dir from a previous run.
+# `BaseTrainer.__init__` re-uses the prior `exp_path` and loads model +
+# optim state; `RLBaseTrainer.build_preprocessor` loads `rl_state.pth`
+# (RMS + curriculum extras).
+# resume_ckpt: checkpoints/.../checkpoint-1500
