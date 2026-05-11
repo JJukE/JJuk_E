@@ -8,4 +8,4 @@ __all__ = [
     "logger", "options", "trainer", "progress_bar", "vis",
 ]
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"

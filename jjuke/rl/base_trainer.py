@@ -139,6 +139,14 @@ class BaseRLTrainer(BaseTrainer):
         Returns:
             dict[str, float] of mean per-update metrics; the framework
             prefixes them with `train/` when calling `log_loss`.
+
+        Pbar contract:
+            Subclasses should (a) override `prepare_train()` to set
+            `self.steps_per_epoch = mini_epochs * ceil(n_rollout / minibatch_size)`
+            so `pbar.start` receives the correct total, and (b) call
+            `self.pbar.update(1, metrics)` after each mini-batch step, using
+            `getattr(self, "_pbar_reward", 0.0)` for the reward value (set by
+            `train_epoch` before `update_from_rollout` is called).
         """
         # # Reference (PPO):
         # n = flat["obs"].shape[0]
@@ -164,6 +172,12 @@ class BaseRLTrainer(BaseTrainer):
         #         self.clip_gradient(self.model); self.optim.step()
         #         # accumulate metrics
         #         n_updates += 1
+        #         try:
+        #             _m = {k: sums[k] / n_updates for k in ["policy_loss", "value_loss"]}
+        #             _m["reward"] = getattr(self, "_pbar_reward", 0.0)
+        #             self.pbar.update(1, _m)
+        #         except Exception:
+        #             pass
         # return {k: v / max(n_updates, 1) for k, v in sums.items()}
         pass
 
@@ -342,10 +356,17 @@ class BaseRLTrainer(BaseTrainer):
         # self.buffer.compute_gae(last_value, gamma=self.gamma, lam=self.tau)
         # t_rollout = time.perf_counter() - t0
         # flat = self.buffer.get_flat()
+        # # Cache buffer stats BEFORE update_from_rollout (buffer is read-only during updates).
+        # with torch.no_grad():
+        #     mean_reward = float(self.buffer.rewards.mean().detach())
+        #     mean_value  = float(self.buffer.values.mean().detach())
+        #     mean_return = float(self.buffer.returns.mean().detach())
+        # self._pbar_reward = mean_reward  # read by subclass pbar.update inside mini-batch loop
         # t1 = time.perf_counter()
         # algo_metrics = self.update_from_rollout(flat)
         # t_update = time.perf_counter() - t1
-        # # Aggregate diagnostics + log via self.log_loss(metrics, "train").
+        # # Build metrics dict, call self.log_loss(metrics, "train"). No pbar.update here —
+        # # subclass update_from_rollout calls self.pbar.update per mini-batch step.
         pass
 
     @torch.no_grad()
